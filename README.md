@@ -1,6 +1,6 @@
 # Hestia simulation
 
-Simulation of the Hestia kitchen (roboTUM) in Isaac Lab.
+Simulation of the Hestia kitchen (roboTUM) in Isaac Lab/Sim.
 
 ## Layout
 
