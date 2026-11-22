@@ -37,9 +37,6 @@ parser.add_argument("--adapter-usd", type=str, default=os.path.join(u_layout.ADA
                     help="USD of the Panda adapter plate (convert components/panda_adapter/meshes/panda_adapter.obj).")
 parser.add_argument("--no-adapter", action="store_true", help="Leave the Panda adapter plate out.")
 parser.add_argument("--no-robot", action="store_true", help="Leave the Franka Panda out.")
-parser.add_argument("--robot-cfg", choices=("default", "high_pd"), default="default",
-                    help="Isaac Lab's Panda: default = FRANKA_PANDA_CFG (joint control demos), "
-                         "high_pd = FRANKA_PANDA_HIGH_PD_CFG (stiffer, for the IK / end-effector demos).")
 parser.add_argument("--gap", type=float, default=0.0, help="Gap between the bottom table and the side tables [m].")
 parser.add_argument("--side-offset", type=float, default=0.5,
                     help="Side tables' back ends: 0 = in line with the bottom table's back edge, 0.5 = halfway.")
@@ -88,18 +85,19 @@ def design_scene(places, top: float):
 
     robot = None
     if not args_cli.no_robot and not args_cli.no_adapter:
-        # Isaac Lab's demo Panda (with hand, fixed base) = the robot the team trains with. Use the same variant
-        # as the training: FRANKA_PANDA_CFG or FRANKA_PANDA_HIGH_PD_CFG (--robot-cfg).
-        from isaaclab_assets import FRANKA_PANDA_CFG, FRANKA_PANDA_HIGH_PD_CFG
-
-        panda_cfg = FRANKA_PANDA_HIGH_PD_CFG if args_cli.robot_cfg == "high_pd" else FRANKA_PANDA_CFG
+        # components/franka_panda: the robot the pouring training uses (Isaac Lab's Panda + its settings)
+        sys.path.insert(0, u_layout.FRANKA_DIR)
+        import franka_cfg
 
         x, y, z, yaw = u_layout.robot_pose(places, top)
-        robot_cfg = panda_cfg.replace(prim_path="/World/Robot")
+        robot_cfg = franka_cfg.isaac_cfg("/World/Robot")
         robot_cfg.init_state.pos = (x, y, z)
         robot_cfg.init_state.rot = u_layout.quat_wxyz(yaw)
+        # scene start pose: the Panda's home pose (servo values / gravity stay from the component)
+        robot_cfg.init_state.joint_pos.update({f"panda_joint{i}": q for i, q in enumerate(u_layout.ROBOT_SCENE_POSE, start=1)})
+        robot_cfg.init_state.joint_pos["panda_finger_joint.*"] = u_layout.ROBOT_SCENE_GRIPPER
         robot = Articulation(robot_cfg)
-        print(f"[INFO] Panda ({args_cli.robot_cfg}) x={x:+.3f} y={y:+.3f} z={z:.3f} m, facing {yaw:+.0f} deg")
+        print(f"[INFO] Panda (components/franka_panda {franka_cfg.VERSION}) x={x:+.3f} y={y:+.3f} z={z:.3f} m, facing {yaw:+.0f} deg")
 
     if not args_cli.drop_test:
         return None, robot

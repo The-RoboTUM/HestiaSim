@@ -2,7 +2,7 @@
 
 Three aluprofil tables of type **`no_brace`** (no diagonal braces) in a U, with the mixer on the left table
 and the Panda adapter plate with a Franka Panda on the left table too. This scene only **references** the
-components (`components/aluprofil_table`, `components/mixer`, `components/panda_adapter`); it never copies their geometry, so a
+components (`components/aluprofil_table`, `components/mixer`, `components/panda_adapter`, `components/franka_panda`); it never copies their geometry, so a
 new table or mixer version shows up here automatically.
 
 ```
@@ -31,7 +31,7 @@ north = towards the bottom table (-y), south = towards the opening (+y), east = 
 | TableRight | -1.38 | +0.90 | -90° | floor |
 | Mixer (mum8, Mana v1 = her newest, confirmed) | +1.25 | +0.90 | 180° (front facing the inside of the U) | on the left table top (0.68) |
 | Panda adapter (Ø350 x 10) | +1.175 | +0.250 | -135° (robot faces +135°: "south-east") | on the left table top; edge 75 mm from its end next to the bottom table, 100 mm from its front edge |
-| Franka Panda (Isaac Lab demo Panda; MuJoCo stand-in) | +1.181 | +0.244 | robot front +135° ("south-east") | 0.69 (on the adapter), start pose "home" |
+| Franka Panda (`components/franka_panda` v1) | +1.181 | +0.244 | robot front +135° ("south-east") | 0.69 (on the adapter), home pose |
 
 Overall 3720 x 2280 mm, inside opening 1800 mm. Change positions in `u_layout.py`
 (`TABLE_TYPE`, `placements()`, `MIXER_ON`; the mixer stands perpendicular to its table, front to the inside) or with the options `--gap`, `--side-offset`, `--no-mixer`, `--no-adapter`, `--no-robot`; adapter position via `ADAPTER_TABLE`, `ADAPTER_END`, `ADAPTER_*` and `ROBOT_FACING_DEG`.
@@ -59,21 +59,23 @@ body is a static collider.
 
 ## Robot model
 
-- **Isaac Lab:** Isaac Lab's own demo Panda (`FRANKA_PANDA_CFG` from `isaaclab_assets`, ships with Isaac Lab)
-  = the robot the team trains its policies with, so it is not stored here and needs no separate component.
-  Isaac Lab also has a stiffer variant for its IK / end-effector demos: `--robot-cfg high_pd`
-  (`FRANKA_PANDA_HIGH_PD_CFG`). Use the same one as the training. Held at its default joint positions.
-- **MuJoCo preview:** MuJoCo Menagerie's `franka_emika_panda/panda.xml` (with hand; built from the same Franka
-  description as Isaac Lab's, so same links and joints), set to **Isaac Lab's start pose and joint servo values**
-  with the same `--robot-cfg` choice: `default` = stiffness 80 / damping 4 with gravity (the arm sags ~0.2 rad
-  under its own weight with these soft values), `high_pd` = 400 / 80 with gravity off (holds still), or
-  `menagerie` = Menagerie's own pose and gains. The physics engines differ, so test trained policies in Isaac.
-  Not part of this repo. Default path: `~/Projects/RoboTUM/franka-sandbox/third_party/mujoco_menagerie/...`; set
-  `HESTIA_PANDA_MJCF` or pass `--panda-xml`. Get it with
+The Panda comes from **`components/franka_panda`** (`franka_cfg.py`, settings v1 = the robot the pouring
+training `training/hestia_beans_pour` uses: Isaac Lab's Panda, gravity off, arm stiffness 1000/750/300,
+damping 20/4/2, the pouring start pose; not final yet). When the training changes the robot, only that
+component changes; this scene follows.
+
+- **Start pose in this scene:** the Panda's upright **home** pose (0, 0, 0, -1.571, 0, 1.571, -0.785; `ROBOT_SCENE_POSE`
+  in `u_layout.py`), not the training's start pose (folded low near the table, only useful with its cups).
+  Servo values and gravity off still come from the component.
+- **Isaac Lab:** `franka_cfg.isaac_cfg()` (Isaac Lab's `FRANKA_PANDA_CFG` + those settings), held at the home pose.
+- **MuJoCo preview:** the same settings (`franka_cfg.mujoco_settings()`) on MuJoCo Menagerie's
+  `franka_emika_panda/panda.xml` (same Franka description: same links and joints). Same robot, pose and servo
+  values; the physics engines differ, so test trained policies in Isaac Lab. Menagerie is not part of this repo.
+  Default path: `~/Projects/RoboTUM/franka-sandbox/third_party/mujoco_menagerie/...`; set `HESTIA_PANDA_MJCF` or
+  pass `--panda-xml`. Get it with
   `git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmind/mujoco_menagerie.git`
   then `git sparse-checkout set franka_emika_panda`.
-- **Isaac Lab version:** `default` uses the values of `FRANKA_PANDA_LEGACY_CFG`, the default in Isaac Lab 2.x. The
-  newest Isaac Lab `FRANKA_PANDA_CFG` reads its gains from its USD file (not checked) - match the version the
-  policies are trained with.
 
 Mounting pose (both): on the adapter, `robot_pose()` in `u_layout.py`: x +1.181, y +0.244, z 0.69, facing +135°.
+The training itself places the robot at the origin with its own table and cups; running a trained policy in
+this scene needs those relative positions to match as well.

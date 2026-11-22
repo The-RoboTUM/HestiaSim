@@ -83,31 +83,22 @@ def adapter_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDT
     return x, y, ROBOT_FACING_DEG + 90.0
 
 
-# Franka Panda on the adapter.
-# Isaac Lab: Isaac Lab's own demo Panda (isaaclab_assets FRANKA_PANDA_CFG, or FRANKA_PANDA_HIGH_PD_CFG with
-#   --robot-cfg high_pd) = the robot the team trains its policies with, so no separate Panda component.
-# MuJoCo preview: MuJoCo Menagerie franka_emika_panda/panda.xml (with hand; same Franka description, links and
-#   joints) set to Isaac Lab's start pose and joint servo values below (--robot-cfg default / high_pd), so it
-#   shows the same robot. Physics engines differ, so trained policies still belong in Isaac. Not part of this
-#   repo; set HESTIA_PANDA_MJCF or pass --panda-xml.
-# (Note 2026-11-22: first marked as a temporary placeholder for a team Panda component; the team trains the
-#  Isaac Lab demo Panda, which the Isaac script already uses.)
+# Franka Panda on the adapter: components/franka_panda (franka_cfg.py) = the robot the pouring training
+# uses (settings v1, not final). Isaac Lab: franka_cfg.isaac_cfg(). MuJoCo preview: the same settings
+# (franka_cfg.mujoco_settings()) applied to MuJoCo Menagerie franka_emika_panda/panda.xml (same Franka
+# description, links and joints; not part of this repo: set HESTIA_PANDA_MJCF or pass --panda-xml).
+# (2026-11-22: replaces the earlier choice of Isaac Lab's default / high_pd Panda, which did not match the training.)
 # Base (link0) origin = the robot's vertical axis (joint 1) on the base's bottom face, +x = robot front.
+FRANKA_DIR = os.path.join(REPO, "components", "franka_panda")
+# The scene spawns the robot in the Panda's upright "home" pose (MuJoCo Menagerie keyframe "home"), not in the
+# pouring training's start pose (that one is folded low near the table and only makes sense with its cups).
+# Servo values and gravity still come from components/franka_panda.
+ROBOT_SCENE_POSE = (0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853)  # joints 1-7 [rad]
+ROBOT_SCENE_GRIPPER = 0.04  # m per finger (open)
 PANDA_MJCF = os.environ.get(
     "HESTIA_PANDA_MJCF",
     os.path.expanduser("~/Projects/RoboTUM/franka-sandbox/third_party/mujoco_menagerie/franka_emika_panda/panda.xml"),
 )
-
-
-# Isaac Lab's demo Panda settings (isaaclab_assets/robots/franka.py, checked 2026-11-22), used to make the MuJoCo
-# preview behave like it. Start pose (all Isaac Lab Panda configs):
-ISAAC_PANDA_START = {"joint1": 0.0, "joint2": -0.569, "joint3": 0.0, "joint4": -2.810, "joint5": 0.0,
-                     "joint6": 3.037, "joint7": 0.741, "finger_joint1": 0.04, "finger_joint2": 0.04}
-# Arm joint servo per --robot-cfg: (stiffness, damping, gravity on the robot?). Force limits 87 Nm (joints 1-4),
-# 12 Nm (5-7). "default" = FRANKA_PANDA_LEGACY_CFG values (the default in Isaac Lab 2.x); the newest Isaac Lab
-# FRANKA_PANDA_CFG takes its gains from its USD instead (not checked). "high_pd" = FRANKA_PANDA_HIGH_PD_CFG.
-ISAAC_PANDA_ARM = {"default": (80.0, 4.0, True), "high_pd": (400.0, 80.0, False)}
-ISAAC_PANDA_FORCE = {1: 87.0, 2: 87.0, 3: 87.0, 4: 87.0, 5: 12.0, 6: 12.0, 7: 12.0}
 
 
 def robot_pose(places, top: float = TABLE_TOP):
