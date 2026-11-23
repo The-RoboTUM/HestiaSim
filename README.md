@@ -79,6 +79,27 @@ folder; the preview and spawn scripts both read it.
 - **Isaac Lab workstation:** the `spawn_*.py` scripts and `training/`; convert the generated meshes to
   USD once (`components/aluprofil_table/scripts/README.md`).
 
+## Working with git
+
+Don't commit to `main` directly. Work on your own branch and merge it through a pull request (PR).
+
+1. **Start from the newest `main`** and create a branch named `<your-name>/<what>`:
+   ```bash
+   git switch main
+   git pull
+   git switch -c jeffrey/kitchen-pour-random-container
+   ```
+2. **Commit and push your branch** as often as you like:
+   ```bash
+   git add <files>
+   git commit -m "Spawn the container at random positions"
+   git push -u origin jeffrey/kitchen-pour-random-container     # later pushes: just `git push`
+   ```
+3. **Open a pull request** on GitHub (branch -> `main`). If it changes someone else's folder, ask them to
+   look at it. Merge when it works; then delete the branch.
+4. **Keep the branch short** (days, not weeks). If `main` moved on, bring it in with `git pull origin main`
+   on your branch and fix conflicts there, not on `main`.
+
 ## Open decisions
 
 **Where do simulation environments live? For Jakub (training) to decide.**
