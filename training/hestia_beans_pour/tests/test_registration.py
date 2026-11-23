@@ -30,6 +30,10 @@ def test_task_registrations():
             "entry_point": "hestia_beans_pour.tasks.pour.pour_env:FrankaBeansPourEnv",
             "env_cfg_entry_point": "hestia_beans_pour.tasks.pour.pour_env_cfg:FrankaBeansPourEnvCfg",
         },
+        "HestiaBeansPour-Franka-Kitchen-Pour": {
+            "entry_point": "hestia_beans_pour.tasks.kitchen_pour.kitchen_env:FrankaKitchenPourEnv",
+            "env_cfg_entry_point": "hestia_beans_pour.tasks.kitchen_pour.kitchen_env_cfg:FrankaKitchenPourEnvCfg",
+        },
     }
 
     for task_id, expected_values in expected.items():

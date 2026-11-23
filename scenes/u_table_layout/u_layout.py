@@ -81,22 +81,22 @@ JOINT1_IN_PLATE = (0.0, 0.0085)  # m, robot's vertical axis in plate coordinates
 # face. Body x -0.095..+0.065 m, the HANDLE sticks out at +x (+0.065..+0.095 m, 20 mm wide) in its own frame.
 # It stands on the BOTTOM table (the one in front of you in the opening) at its end next to the robot, the
 # handle pointing west (+x world, towards the left table / the robot), square to the table (yaw 0) for now;
-# later the handle should point at the robot itself. Handle tip 150 mm from the bottom table's +x end, body
-# edge 100 mm from its front edge. About 0.53 m from the robot's vertical axis.
+# later the handle should point at the robot itself. Centre 15 cm from the bottom table's +x end and 20 cm from
+# its front edge = the same spot as the kitchen pour training (training/.../kitchen_pour/layout.py,
+# CUP_CENTRE_FROM_END / CUP_CENTRE_FROM_FRONT); keep the two equal. Fixed spot for now: the container will be
+# spawned at random positions later. (2026-11-23: moved from handle tip 150 mm / body 100 mm from the edges.)
 CONTAINER_DIR = os.path.join(REPO, "components", "container")
 CONTAINER_STL = os.path.join(CONTAINER_DIR, "container01_v2.stl")  # mm
 CONTAINER_TABLE = "TableBottom"
-CONTAINER_HALF_DEPTH = 0.060  # m, half its size across the handle direction (120 mm)
-CONTAINER_HANDLE_TIP = 0.095  # m, origin -> handle tip
-CONTAINER_TIP_TO_END = 0.150  # m, handle tip -> the bottom table's +x end
-CONTAINER_EDGE_TO_FRONT = 0.100  # m, body edge -> the bottom table's front edge (+y)
+CONTAINER_CENTRE_FROM_END = 0.15  # m, container origin -> the bottom table's +x end (= kitchen pour)
+CONTAINER_CENTRE_FROM_FRONT = 0.20  # m, container origin -> the bottom table's front edge, +y (= kitchen pour)
 CONTAINER_YAW = 0.0  # deg relative to the table: 0 = handle along the table's +x = west
 
 
 def container_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDTH):
     """World (x, y, yaw) of the container (origin = bottom centre) on CONTAINER_TABLE's top."""
-    px = length / 2 - CONTAINER_TIP_TO_END - CONTAINER_HANDLE_TIP
-    py = width / 2 - CONTAINER_EDGE_TO_FRONT - CONTAINER_HALF_DEPTH
+    px = length / 2 - CONTAINER_CENTRE_FROM_END
+    py = width / 2 - CONTAINER_CENTRE_FROM_FRONT
     return on_table(places, CONTAINER_TABLE, px, py, CONTAINER_YAW)
 
 
@@ -169,6 +169,14 @@ def to_world(x: float, y: float, yaw_deg: float, px: float, py: float) -> tuple[
 
 
 def quat_wxyz(yaw_deg: float) -> tuple[float, float, float, float]:
-    """Rotation about z as a quaternion (w, x, y, z), the convention of MuJoCo and Isaac Lab."""
+    """Rotation about z as a quaternion (w, x, y, z), the convention of MuJoCo (and of Isaac Lab before 3.0)."""
     h = math.radians(yaw_deg) / 2
     return (math.cos(h), 0.0, 0.0, math.sin(h))
+
+
+def quat_xyzw(yaw_deg: float) -> tuple[float, float, float, float]:
+    """Rotation about z as a quaternion (x, y, z, w), the convention of Isaac Lab 3.x (create_prim, spawners,
+    InitialStateCfg.rot). (Fix 2026-11-23: the Isaac spawn script used quat_wxyz, which Isaac Lab 3 reads as a
+    180 deg roll for yaw 0, i.e. upside-down tables.)"""
+    h = math.radians(yaw_deg) / 2
+    return (0.0, 0.0, math.sin(h), math.cos(h))

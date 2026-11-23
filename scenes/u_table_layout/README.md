@@ -39,7 +39,7 @@ Overall 3720 x 2280 mm, inside opening 1800 mm.
 | Mixer (`mixer` v2, Mana) | +1.25 | +0.90 | 180° (front to the inside of the U) | left table top (z 0.68) |
 | Panda adapter (`panda_adapter` v1) | +1.175 | +0.250 | -135° (robot faces +135°, "south-east") | left table top; edge 75 mm from its end next to the bottom table, 100 mm from its front edge |
 | Franka Panda (`franka_panda` v1) | +1.181 | +0.244 | +135° ("south-east") | adapter (z 0.69), upright home pose |
-| Container (`container` v2) | +0.655 | +0.320 | 0° (handle west) | bottom table top (z 0.68); handle tip 150 mm from its end next to the robot, body 100 mm from its front edge, 0.53 m from the robot axis |
+| Container (`container` v2) | +0.750 | +0.280 | 0° (handle west) | bottom table top (z 0.68); centre 15 cm from its end next to the robot, 20 cm from its front edge (same as the kitchen pour training), 0.43 m from the robot axis |
 
 All positions live in `u_layout.py` (`placements()`, `MIXER_ON`, `ADAPTER_*`, `ROBOT_FACING_DEG`,
 `CONTAINER_*`); the preview and the spawn script both read it.
@@ -76,9 +76,22 @@ not the training's start pose.
   `git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmind/mujoco_menagerie.git`
   then `git sparse-checkout set franka_emika_panda`.
 
+**Quaternions:** Isaac Lab 3.x uses (x, y, z, w), so `spawn_U_table_layout.py` uses `u_layout.quat_xyzw()`
+(fixed 2026-11-23 by Jakub: it used `quat_wxyz()` before, which Isaac Lab read as a 180° roll, i.e. upside-down
+tables). The MuJoCo preview keeps (w, x, y, z).
+
+## Used by training
+
+- **Kitchen pour** (`HestiaBeansPour-Franka-Kitchen-Pour`, `training/hestia_beans_pour/.../tasks/kitchen_pour`)
+  reads the tables, the robot pose (on the adapter, home pose) and the mixer from `u_layout.py`. It sets the
+  bean container position itself (`layout.py`, `CUP_CENTRE_*`: centre 15 cm from the bottom table's end at the
+  left table, 20 cm from its front edge); `CONTAINER_*` here uses the same values, keep them equal.
+- **Pour** (`HestiaBeansPour-Franka-Pour`) does not use this scene: it places the robot at the origin with its own
+  table and cups; running one of its policies here needs those relative positions to match.
+
 ## Not done yet
 
+- Container position is fixed for now; it will be spawned at random positions later. Until then the same
+  numbers live in two places (`CONTAINER_*` here, `CUP_CENTRE_*` in the kitchen pour training).
 - Container is in the MuJoCo preview only; Isaac needs a container USD first.
 - Container handle points west (square to the table); later it should point at the robot (`CONTAINER_YAW`).
-- This is a layout, not a training environment: the pouring training still uses its own table and cups at
-  the origin; running a trained policy here needs those relative positions to match.

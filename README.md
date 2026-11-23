@@ -82,6 +82,12 @@ standard layout: one task package holds the env, registers it under a name
 
 Suggestion: keep A for now and switch to B once a second user of the same env appears. Either way, the
 env should take its table, mixer, robot and positions from `components/` and `scenes/` instead of its own
-copies (today the pour env still uses its own table and cups at the origin).
+copies. The kitchen pour env (`tasks/kitchen_pour`, 2026-11-23) already does this through
+`scenes/u_table_layout/u_layout.py`; the older pour env still uses its own table and cups at the origin.
+
+**Container position (later).** The container will be spawned at random positions. For now it stands at
+one fixed spot, written twice with the same values: `CONTAINER_*` in `u_layout.py` and `CUP_CENTRE_*` in
+`kitchen_pour/layout.py` (centre 15 cm from the bottom table's end at the left table, 20 cm from its front
+edge). When the random spawn comes, define its range in one place.
 
 AI agents: see `AGENTS.md`.

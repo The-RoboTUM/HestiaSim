@@ -65,13 +65,13 @@ def design_scene(places, top: float):
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.75, 0.77, 0.8), metallic=0.8, roughness=0.35),
     )
     for name, x, y, yaw in places:
-        table.func(f"/World/{name}", table, translation=(x, y, 0.0), orientation=u_layout.quat_wxyz(yaw))
+        table.func(f"/World/{name}", table, translation=(x, y, 0.0), orientation=u_layout.quat_xyzw(yaw))
 
     if not args_cli.no_mixer:
         # A mount Xform on the table top carries the table pose; the mixer keeps its own 0.233 m lift
         # under it (set explicitly, in case the spawner replaces the referenced root's transform).
         x, y, yaw = u_layout.mixer_pose(places)
-        sim_utils.create_prim("/World/MixerMount", "Xform", translation=(x, y, top), orientation=u_layout.quat_wxyz(yaw))
+        sim_utils.create_prim("/World/MixerMount", "Xform", translation=(x, y, top), orientation=u_layout.quat_xyzw(yaw))
         mixer = sim_utils.UsdFileCfg(usd_path=os.path.abspath(args_cli.mixer_usd))
         mixer.func("/World/MixerMount/Mixer", mixer, translation=(0.0, 0.0, u_layout.MIXER_BOTTOM_OFFSET))
         print(f"[INFO] Mixer        x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, z={top:.3f} m")
@@ -80,7 +80,7 @@ def design_scene(places, top: float):
         # static plate (converted without mass) lying on the bottom table; robot faces ROBOT_FACING_DEG
         x, y, yaw = u_layout.adapter_pose(places)
         adapter = sim_utils.UsdFileCfg(usd_path=os.path.abspath(args_cli.adapter_usd))
-        adapter.func("/World/PandaAdapter", adapter, translation=(x, y, top), orientation=u_layout.quat_wxyz(yaw))
+        adapter.func("/World/PandaAdapter", adapter, translation=(x, y, top), orientation=u_layout.quat_xyzw(yaw))
         print(f"[INFO] Adapter      x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, z={top:.3f} m")
 
     robot = None
@@ -92,7 +92,7 @@ def design_scene(places, top: float):
         x, y, z, yaw = u_layout.robot_pose(places, top)
         robot_cfg = franka_cfg.isaac_cfg("/World/Robot")
         robot_cfg.init_state.pos = (x, y, z)
-        robot_cfg.init_state.rot = u_layout.quat_wxyz(yaw)
+        robot_cfg.init_state.rot = u_layout.quat_xyzw(yaw)
         # scene start pose: the Panda's home pose (servo values / gravity stay from the component)
         robot_cfg.init_state.joint_pos.update({f"panda_joint{i}": q for i, q in enumerate(u_layout.ROBOT_SCENE_POSE, start=1)})
         robot_cfg.init_state.joint_pos["panda_finger_joint.*"] = u_layout.ROBOT_SCENE_GRIPPER
