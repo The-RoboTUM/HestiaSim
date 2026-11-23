@@ -14,6 +14,10 @@ episode starts from the robot's home pose, and learning is driven by one bounded
 whose change per step is the reward (potential-based shaping). Holding a good state earns nothing and going back
 costs exactly what was gained, so the shaping cannot be farmed and does not compete with finishing the pour. On top
 come the change of the delivered / spilled bean fractions, a terminal success bonus and a terminal failure penalty.
+
+The container (``components/container``) is grasped at its handle from above, fingers across the 20 mm handle. The
+transport and pour stages use its *pouring lip* (the lowest point of the rim, ``env.cup_pour_point_e()``), because
+the 150 x 110 mm opening is much wider than the chute.
 """
 
 from __future__ import annotations
@@ -25,8 +29,9 @@ from typing import TYPE_CHECKING
 import torch
 
 from isaaclab.managers import ManagerTermBase, RewardTermCfg
+from isaaclab.utils import math as math_utils
 
-from hestia_beans_pour.tasks.pour.mdp.rewards import _grasp_width_quality, tcp_cup_grasp_pose_tanh
+from hestia_beans_pour.tasks.pour.mdp.rewards import _grasp_width_quality, _open_quality
 
 if TYPE_CHECKING:
     from ..kitchen_env import FrankaKitchenPourEnv
@@ -40,14 +45,17 @@ DEFAULT_POTENTIAL_PARAMS = {
     "approach_orientation_std": 0.75,
     "approach_open_hand_fraction": 0.15,
     "grasp_reach": 0.025,
-    "grasp_preload_position": 0.024,
+    # full grasp credit once the filtered finger command is below 6 mm (the fingers stop at 10 mm on the handle);
+    # same share of the closing stroke (0.04 -> 0) as 24 mm was of the pour task's stroke (0.04 -> 0.021)
+    "grasp_preload_position": 0.006,
     "lift_height": 0.10,
     "transport_min_lift": 0.05,
     "transport_far_distance": 0.80,
     "transport_near_std": 0.08,
     "pour_radius": 0.06,
     "pour_clearance": 0.02,
-    "pour_tilt_deg": 130.0,
+    # the container is shallow (65 mm cavity): it is empty well before it is upside down
+    "pour_tilt_deg": 110.0,
 }
 
 
@@ -56,7 +64,53 @@ def _smoothstep01(x: torch.Tensor) -> torch.Tensor:
     return x.square() * (3.0 - 2.0 * x)
 
 
-def grasp_quality(env: FrankaKitchenPourEnv, reach: float = 0.025, preload_position: float = 0.024) -> torch.Tensor:
+def handle_grasp_to_tcp_quat(env: FrankaKitchenPourEnv) -> torch.Tensor:
+    """TCP orientation error ``(x, y, z, w)`` to the nearer of the two equivalent handle grasps.
+
+    The handle grasp (``layout.HANDLE_GRASP_TCP_QUAT``) and the same grasp turned by 180 deg about the TCP axis
+    (fingers swapped) hold the handle identically. Unlike the pour task's cup, the container cannot be grasped from
+    its other sides (the gripper does not span the box), so there are only these two.
+    """
+    cup_quat = env.cup_pose_e()[:, 3:7]
+    tcp_quat = env.tcp_pose_e()[:, 3:7]
+    n = cup_quat.shape[0]
+    base = math_utils.quat_mul(cup_quat, env._desired_grasp_tcp_quat_c)
+    # 180 deg about the TCP z axis, applied in the TCP frame
+    flip = torch.zeros((n, 4), device=cup_quat.device, dtype=cup_quat.dtype)
+    flip[:, 2] = 1.0
+    desired = torch.stack((base, math_utils.quat_mul(base, flip)), dim=1)
+    errors = math_utils.quat_unique(
+        math_utils.quat_mul(math_utils.quat_conjugate(desired), tcp_quat.unsqueeze(1).expand(-1, 2, -1))
+    )
+    magnitudes = torch.linalg.vector_norm(math_utils.axis_angle_from_quat(errors), dim=-1)
+    magnitudes = torch.nan_to_num(magnitudes, nan=torch.inf, posinf=torch.inf, neginf=torch.inf)
+    nearest = torch.argmin(magnitudes, dim=1)
+    error = torch.gather(errors, dim=1, index=nearest[:, None, None].expand(-1, 1, 4)).squeeze(1)
+    return torch.nan_to_num(math_utils.quat_unique(error))
+
+
+def tcp_handle_grasp_pose_tanh(
+    env: FrankaKitchenPourEnv,
+    position_std: float = 0.10,
+    orientation_std: float = 0.75,
+    open_hand_fraction: float = 0.15,
+) -> torch.Tensor:
+    """Approach quality in ``[0, 1]``: TCP near the handle's grasp point, in the handle grasp orientation, hand open.
+
+    Same shape as the pour task's ``tcp_cup_grasp_pose_tanh`` (broad tanh kernels, open-hand bonus that vanishes at
+    the grasp pose), with the handle's two grasps instead of the cup's four side grasps.
+    """
+    distance = torch.linalg.vector_norm(env.tcp_pose_e()[:, :3] - env.cup_grasp_point_e(), dim=-1)
+    position_quality = 1.0 - torch.tanh(distance / float(position_std))
+    error = handle_grasp_to_tcp_quat(env)
+    orientation_error = torch.linalg.vector_norm(math_utils.axis_angle_from_quat(error), dim=-1)
+    orientation_quality = 1.0 - torch.tanh(orientation_error / float(orientation_std))
+    pose_quality = position_quality * (0.5 + 0.5 * orientation_quality)
+    potential = pose_quality + float(open_hand_fraction) * (1.0 - pose_quality) * _open_quality(env)
+    return torch.nan_to_num(potential, nan=0.0, posinf=1.0, neginf=0.0).clamp_(0.0, 1.0)
+
+
+def grasp_quality(env: FrankaKitchenPourEnv, reach: float = 0.025, preload_position: float = 0.006) -> torch.Tensor:
     """Contact-qualified grasp in ``[0, 1]``: TCP at the grasp point, hand commanded closed, both fingers pressing."""
     distance = torch.linalg.vector_norm(env.tcp_pose_e()[:, :3] - env.cup_grasp_point_e(), dim=-1)
     proximity = _smoothstep01(1.0 - distance / float(reach))
@@ -66,7 +120,7 @@ def grasp_quality(env: FrankaKitchenPourEnv, reach: float = 0.025, preload_posit
 def kitchen_pour_potential_terms(env: FrankaKitchenPourEnv, **params) -> dict[str, torch.Tensor]:
     """Stage qualities in ``[0, 1]`` (see the module docstring) and their weighted sum ``"potential"``."""
     p = {**DEFAULT_POTENTIAL_PARAMS, **params}
-    approach = tcp_cup_grasp_pose_tanh(
+    approach = tcp_handle_grasp_pose_tanh(
         env,
         position_std=p["approach_position_std"],
         orientation_std=p["approach_orientation_std"],
@@ -76,7 +130,8 @@ def kitchen_pour_potential_terms(env: FrankaKitchenPourEnv, **params) -> dict[st
     height = env.cup_pose_e()[:, 2] - env.table_top
     lift = grasp * (height / float(p["lift_height"])).clamp(0.0, 1.0)
 
-    mouth = env.cup_mouth_e()
+    # pouring lip (= centre of the opening while upright, the lowest rim point when tilted)
+    mouth = env.cup_pour_point_e()
     target = env.pour_target_e()
     target_distance = torch.linalg.vector_norm(mouth - target, dim=-1)
     # broad linear part (useful from the table) + sharp part (precise placement over the chute)
@@ -135,5 +190,7 @@ __all__ = [
     "DeltaReward",
     "POTENTIAL_TERMS",
     "grasp_quality",
+    "handle_grasp_to_tcp_quat",
     "kitchen_pour_potential_terms",
+    "tcp_handle_grasp_pose_tanh",
 ]

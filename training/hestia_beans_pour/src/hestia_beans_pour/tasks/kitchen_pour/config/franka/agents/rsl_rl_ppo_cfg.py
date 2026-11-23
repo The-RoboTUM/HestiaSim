@@ -9,6 +9,9 @@ from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlPpoAlgorithmCfg
 
 from hestia_beans_pour.tasks.pour.config.franka.agents.rsl_rl_ppo_cfg import FrankaBeansPourPPORunnerCfg
 
+# resolved by RSL-RL when the runner is built (importing it here would pull in rsl_rl at cfg import)
+_PERCENT_CHECKPOINT_RUNNER = f"{__name__.rsplit('.', 1)[0]}.percent_checkpoint_runner:PercentCheckpointOnPolicyRunner"
+
 
 @configclass
 class FrankaKitchenPourPPORunnerCfg(FrankaBeansPourPPORunnerCfg):
@@ -16,13 +19,22 @@ class FrankaKitchenPourPPORunnerCfg(FrankaBeansPourPPORunnerCfg):
 
     Asymmetric actor-critic: the actor sees only the robot's own measurements (deployable without cameras), the
     critic additionally sees the privileged scene state.
+
+    Checkpoints: one file per run in ``logs/rsl_rl/franka_kitchen_pour/<run>/``, rewritten after every 10 % of
+    ``max_iterations`` as ``model_10pct.pt``, ``model_20pct.pt``, ... ``model_100pct.pt`` (the previous one is deleted),
+    see :mod:`.percent_checkpoint_runner`.
     """
+
+    class_name = _PERCENT_CHECKPOINT_RUNNER
+    checkpoint_percent_step: int = 10
+    """Save (and keep only) a checkpoint after every this many percent of the training iterations."""
 
     # 48 policy steps = 1.6 s at 30 Hz; episodes are 15 s.
     num_steps_per_env = 48
     max_iterations = 8000
     # Episodes always start at home, so spreading the first episode lengths decorrelates the environments.
     init_at_random_ep_len = True
+    # not used: PercentCheckpointOnPolicyRunner replaces RSL-RL's periodic model_<iteration>.pt checkpoints
     save_interval = 100
     obs_groups = {"actor": ["policy"], "critic": ["policy", "critic"]}
     experiment_name = "franka_kitchen_pour"

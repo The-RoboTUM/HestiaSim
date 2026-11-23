@@ -7,7 +7,8 @@
 
 Scene (env frame = U-layout world frame, see :mod:`.layout`): three aluprofil tables in a U, the Franka Panda on its
 adapter plate on the left table in the scene's mounting pose, the mixer (kinematic, chute hole open) in the middle of
-the left table, and the pour task's source container half full of rigid beans at a fixed spot on the middle table.
+the left table, and the bean container (``components/container``, container01 v2) half full of rigid beans at a fixed
+spot on the middle table, its handle towards the robot. The robot grasps it at the handle from above.
 
 Every reset puts the robot in its home pose and the container and mixer at their spots, each with a little noise
 (sim-to-real robustness; the policy never observes them). Helper names mirror the pour env (``cup_pose_e``,
@@ -27,15 +28,25 @@ from isaaclab.utils import index_fill_
 from isaaclab.utils import math as math_utils
 
 from ..pour.beans import bean_bounding_radius
-from ..pour.geometry import CUP_GRASP_HEIGHT, CUP_GRASP_TCP_QUAT_C, SOURCE_CUP_GEOMETRY, points_inside_box
-from ..pour.pour_env_cfg import beans_local_positions, configure_beans
+from ..pour.geometry import points_inside_box
+from .kitchen_env_cfg import beans_local_positions, configure_scene
 from .layout import (
     CHUTE_TOP_CENTRE,
+    CONTAINER_CAVITY_CENTRE_X,
+    CONTAINER_CAVITY_HI,
+    CONTAINER_CAVITY_LO,
+    HANDLE_GRASP_POINT,
+    HANDLE_GRASP_TCP_QUAT,
+    HANDLE_WIDTH,
     MIXER_BBOX_REGION,
     MIXER_BOWL_REGION,
     MIXER_CHUTE_REGION,
     POUR_TARGET_ABOVE_CHUTE,
+    container_rim_points,
 )
+
+POUR_LIP_SOFTMIN_HEIGHT = 0.005
+"""Height scale [m] of the soft minimum that picks the lowest rim point as the pouring lip."""
 
 if TYPE_CHECKING:
     from isaaclab.assets import RigidObjectCollection
@@ -54,8 +65,8 @@ class FrankaKitchenPourEnv(ManagerBasedRLEnv):
     cfg: FrankaKitchenPourEnvCfg
 
     def __init__(self, cfg: FrankaKitchenPourEnvCfg, render_mode: str | None = None, **kwargs):
-        # bean count / size can be overridden from the command line: rebuild the bean collection first
-        configure_beans(cfg)
+        # bean count / size and the container mass can be overridden from the command line: apply them first
+        configure_scene(cfg)
         super().__init__(cfg, render_mode, **kwargs)
 
     def load_managers(self) -> None:
@@ -87,15 +98,17 @@ class FrankaKitchenPourEnv(ManagerBasedRLEnv):
         self._tcp_body_idx = tcp_body_ids[0]
         self._tcp_offset_pos = torch.tensor(cfg.tcp_offset_pos, device=dev).repeat(self.num_envs, 1)
         self._tcp_offset_quat = torch.tensor(cfg.tcp_offset_rot, device=dev).repeat(self.num_envs, 1)
-        grasp_tcp_quat_c = torch.as_tensor(CUP_GRASP_TCP_QUAT_C, device=dev, dtype=torch.float32)
+        # handle grasp in the container frame: TCP pointing down, fingers across the handle
+        grasp_tcp_quat_c = torch.as_tensor(HANDLE_GRASP_TCP_QUAT, device=dev, dtype=torch.float32)
         self._desired_grasp_tcp_quat_c = math_utils.quat_unique(grasp_tcp_quat_c).repeat(self.num_envs, 1)
+        self._handle_grasp_point_c = torch.tensor(HANDLE_GRASP_POINT, device=dev, dtype=torch.float32)
 
         # robot start pose (home) from the robot cfg, in ARM_JOINTS order
         joint_pos = cfg.scene.robot.init_state.joint_pos
         self._arm_home = torch.tensor([float(joint_pos[name]) for name in ARM_JOINTS], device=dev)
         self._gripper_open_position = float(joint_pos["panda_finger_joint.*"])
         self._gripper_open_width = 2.0 * self._gripper_open_position
-        self._gripper_grasp_width = 2.0 * SOURCE_CUP_GEOMETRY.outer_half_extents[1]
+        self._gripper_grasp_width = HANDLE_WIDTH
 
         # nominal container and mixer poses (env frame) and the table height
         self.table_top = float(cfg.table_top)
@@ -115,8 +128,10 @@ class FrankaKitchenPourEnv(ManagerBasedRLEnv):
         self._bowl_lo_t, self._bowl_hi_t = t(MIXER_BOWL_REGION[0]), t(MIXER_BOWL_REGION[1])
         self._chute_lo_t, self._chute_hi_t = t(MIXER_CHUTE_REGION[0]), t(MIXER_CHUTE_REGION[1])
         self._mixer_lo_t, self._mixer_hi_t = t(MIXER_BBOX_REGION[0]), t(MIXER_BBOX_REGION[1])
-        self._source_inner_lo_t = t(SOURCE_CUP_GEOMETRY.inner_bounds[0])
-        self._source_inner_hi_t = t(SOURCE_CUP_GEOMETRY.inner_bounds[1])
+        self._source_inner_lo_t = t(CONTAINER_CAVITY_LO)
+        self._source_inner_hi_t = t(CONTAINER_CAVITY_HI)
+        self._mouth_c = t((CONTAINER_CAVITY_CENTRE_X, 0.0, CONTAINER_CAVITY_HI[2]))
+        self._rim_points_c = t(container_rim_points())
         self._workspace_lower_t = t(cfg.workspace_lower_bound)
         self._workspace_upper_t = t(cfg.workspace_upper_bound)
 
@@ -174,26 +189,38 @@ class FrankaKitchenPourEnv(ManagerBasedRLEnv):
         return torch.cat((torch.nan_to_num(pos), torch.nan_to_num(quat)), dim=-1)
 
     def cup_pose_e(self) -> torch.Tensor:
-        """Container pose (origin at the centre of its outer base)."""
+        """Container pose (origin at the bottom centre of its footprint incl. the handle, +x = handle side)."""
         return self._pose_w_to_e(self._source_cup.data.root_link_pose_w.torch)
 
     def mixer_pose_e(self) -> torch.Tensor:
         """Mixer frame pose (origin at the top of the lid plate, +x = front)."""
         return self._pose_w_to_e(self._mixer.data.root_link_pose_w.torch)
 
-    def _cup_point_e(self, height: float) -> torch.Tensor:
+    def _cup_point_e(self, local: torch.Tensor) -> torch.Tensor:
+        """A point given in the container frame -> env frame."""
         pose = self.cup_pose_e()
-        offset = torch.zeros((self.num_envs, 3), device=self.device)
-        offset[:, 2] = height
-        return pose[:, :3] + math_utils.quat_apply(pose[:, 3:7], offset)
+        return pose[:, :3] + math_utils.quat_apply(pose[:, 3:7], local.expand(self.num_envs, -1))
 
     def cup_grasp_point_e(self) -> torch.Tensor:
-        """Grasp point in the middle of the container walls."""
-        return self._cup_point_e(CUP_GRASP_HEIGHT)
+        """Grasp point on the handle (where the TCP should be when holding the container)."""
+        return self._cup_point_e(self._handle_grasp_point_c)
 
     def cup_mouth_e(self) -> torch.Tensor:
         """Centre of the container's opening."""
-        return self._cup_point_e(SOURCE_CUP_GEOMETRY.rim_height)
+        return self._cup_point_e(self._mouth_c)
+
+    def cup_pour_point_e(self) -> torch.Tensor:
+        """Pouring lip: the lowest point of the container's rim (soft minimum over its corners and edge midpoints).
+
+        Upright, all rim points are equally high and this is the centre of the opening; tilted, it moves to the
+        edge or corner over which the beans leave the container.
+        """
+        pose = self.cup_pose_e()
+        count = self._rim_points_c.shape[0]
+        quat = pose[:, None, 3:7].expand(-1, count, -1)
+        rim = pose[:, None, :3] + math_utils.quat_apply(quat, self._rim_points_c.expand(self.num_envs, -1, -1))
+        weights = torch.softmax(-rim[..., 2] / POUR_LIP_SOFTMIN_HEIGHT, dim=1)
+        return torch.nan_to_num((weights.unsqueeze(-1) * rim).sum(dim=1))
 
     def _mixer_point_e(self, local: torch.Tensor) -> torch.Tensor:
         pose = self.mixer_pose_e()
@@ -204,7 +231,7 @@ class FrankaKitchenPourEnv(ManagerBasedRLEnv):
         return self._mixer_point_e(self._chute_top_m)
 
     def pour_target_e(self) -> torch.Tensor:
-        """Point above the chute that the container mouth is guided to."""
+        """Point above the chute that the container's pouring lip is guided to."""
         return self._mixer_point_e(self._pour_target_m)
 
     def cup_tilt(self) -> torch.Tensor:

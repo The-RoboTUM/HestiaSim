@@ -40,10 +40,60 @@ def test_poses_match_the_u_scene(layout):
 def test_container_on_the_middle_table(layout):
     k = layout.kitchen_layout()
     assert k.cup_pos == pytest.approx((0.75, 0.28, 0.68))
-    # inside the bottom table's top (x in +-0.9, top y from -0.36 to 0.48), with the container's 28 mm half width
-    assert -0.9 + 0.028 < k.cup_pos[0] < 0.9 - 0.028
-    assert -0.36 + 0.028 < k.cup_pos[1] < 0.48 - 0.028
-    assert "15.0 cm" in layout.placement_report() and "20.0 cm" in layout.placement_report()
+    assert k.cup_yaw_deg == pytest.approx(0.0)
+    fp = layout.container_footprint_world()
+    # box 160 x 120 mm, handle (20 mm wide) sticking out 30 mm towards the table's +x end (robot side)
+    assert fp["body"] == pytest.approx((0.655, 0.815, 0.22, 0.34))
+    assert fp["handle"] == pytest.approx((0.815, 0.845, 0.27, 0.29))
+    # everything on the bottom table's top (x in +-0.9, top y from -0.36 to 0.48)
+    for x0, x1, y0, y1 in fp.values():
+        assert -0.9 < x0 < x1 < 0.9 and -0.36 < y0 < y1 < 0.48
+    report = layout.placement_report()
+    for text in (
+        "15.0 cm from that end",
+        "20.0 cm from the front edge",
+        "handle tip -> table end: 5.5 cm",
+        "far box wall -> table end: 24.5 cm",
+        "front box wall -> front edge: 14.0 cm",
+    ):
+        assert text in report, report
+
+
+def test_container_geometry_matches_the_stl(layout):
+    """Numbers measured from components/container/container01_v2.stl (190 x 120 x 69.95 mm, origin at the
+    bottom centre of the bounding box)."""
+    boxes = {name: (centre, half) for name, centre, half in layout.container_collider_boxes()}
+    lo = [min(c[i] - h[i] for c, h in boxes.values()) for i in range(3)]
+    hi = [max(c[i] + h[i] for c, h in boxes.values()) for i in range(3)]
+    assert lo == pytest.approx([-0.095, -0.060, 0.0])
+    assert hi == pytest.approx([0.095, 0.060, 0.06995])
+    clo, chi = layout.CONTAINER_CAVITY_LO, layout.CONTAINER_CAVITY_HI
+    cavity_centre_x, handle_width = layout.CONTAINER_CAVITY_CENTRE_X, layout.HANDLE_WIDTH
+    assert clo == pytest.approx((-0.090, -0.055, 0.005))
+    assert chi == pytest.approx((0.060, 0.055, 0.06995))
+    assert cavity_centre_x == pytest.approx(-0.015)
+    # no collider reaches into the cavity
+    for name, (c, h) in boxes.items():
+        overlap = all(c[i] - h[i] < chi[i] - 1e-9 and c[i] + h[i] > clo[i] + 1e-9 for i in range(3))
+        assert not overlap, f"{name} reaches into the cavity"
+    # the grasp point lies in the handle leg, the handle is narrower than the open gripper (80 mm)
+    (lc, lh) = boxes["handle_leg"]
+    assert all(abs(layout.HANDLE_GRASP_POINT[i] - lc[i]) <= lh[i] for i in range(3))
+    assert handle_width == pytest.approx(0.020) and handle_width < 0.08
+    # upright, the rim points average to the centre of the opening
+    rim = layout.container_rim_points()
+    centre = [sum(p[i] for p in rim) / len(rim) for i in range(3)]
+    assert centre == pytest.approx([-0.015, 0.0, 0.06995])
+
+
+def test_container_usd(layout, tmp_path):
+    path = Path(layout.write_container_usda(tmp_path, mass=0.3))
+    text = path.read_text()
+    assert 'defaultPrim = "Container"' in text
+    assert '"PhysicsRigidBodyAPI", "PhysicsMassAPI"' in text and "physics:mass = 0.300000" in text
+    assert text.count('def Cube "') == len(layout.container_collider_boxes()) == 7
+    assert layout.write_container_usda(tmp_path, mass=0.3) == str(path)
+    assert layout.write_container_usda(tmp_path, mass=0.4) != str(path)
 
 
 def test_quaternions_are_xyzw(layout):

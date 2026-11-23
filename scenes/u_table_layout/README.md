@@ -84,8 +84,10 @@ tables). The MuJoCo preview keeps (w, x, y, z).
 
 - **Kitchen pour** (`HestiaBeansPour-Franka-Kitchen-Pour`, `training/hestia_beans_pour/.../tasks/kitchen_pour`)
   reads the tables, the robot pose (on the adapter, home pose) and the mixer from `u_layout.py`. It sets the
-  bean container position itself (`layout.py`, `CUP_CENTRE_*`: centre 15 cm from the bottom table's end at the
-  left table, 20 cm from its front edge); `CONTAINER_*` here uses the same values, keep them equal.
+  bean container (`components/container`, rebuilt from boxes measured on container01 v2) position itself
+  (`layout.py`, `CUP_CENTRE_*`): the centre of its 190 x 120 mm footprint (handle included) 15 cm from the bottom
+  table's end at the left table and 20 cm from its front edge, handle pointing to that end (see the training
+  README for all edge distances). `CONTAINER_*` here uses the same values, keep them equal.
 - **Pour** (`HestiaBeansPour-Franka-Pour`) does not use this scene: it places the robot at the origin with its own
   table and cups; running one of its policies here needs those relative positions to match.
 
