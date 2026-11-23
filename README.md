@@ -16,7 +16,8 @@ HestiaSim/
 ├── scenes/            layouts: which components stand where
 │   └── u_table_layout/    three tables in a U + mixer + adapter + Panda + container
 └── training/          Isaac Lab task packages; each one defines its simulation environment(s)
-    └── hestia_beans_pour/ HestiaBeansPour-Franka-Pour: the Panda pours beans between two cups
+    └── hestia_beans_pour/ HestiaBeansPour-Franka-Pour: the Panda pours beans between two cups;
+                           HestiaBeansPour-Franka-Kitchen-Pour: container -> mixer chute in the U kitchen
 ```
 
 - **Component:** one real object (table, mixer, container).
@@ -99,6 +100,81 @@ Don't commit to `main` directly. Work on your own branch and merge it through a 
    look at it. Merge when it works; then delete the branch.
 4. **Keep the branch short** (days, not weeks). If `main` moved on, bring it in with `git pull origin main`
    on your branch and fix conflicts there, not on `main`.
+
+## Kitchen bean pouring task
+
+The task `HestiaBeansPour-Franka-Kitchen-Pour` trains the Franka Panda to pick up the bean container
+(`components/container`) by its handle on the middle table of the U kitchen (`scenes/u_table_layout`) and pour the beans
+into the mixer's chute. The scene runs in **Isaac Sim** with PhysX physics and the policy is trained with
+**RSL-RL** (PPO). The task code and its full description are in `training/hestia_beans_pour` (see its README,
+section "Kitchen beans pour").
+
+### Setup (once)
+
+You need an NVIDIA GPU, [uv](https://docs.astral.sh/uv/getting-started/installation/) and an Isaac Lab source
+checkout at `HestiaSim/IsaacLab` (the path is set in `[tool.uv.sources]` of
+`training/hestia_beans_pour/pyproject.toml`; change it there if your checkout is elsewhere). Then:
+
+```bash
+cd training/hestia_beans_pour
+uv sync --extra isaacsim
+```
+
+Run all commands below from `training/hestia_beans_pour`: the logs and checkpoints are written below the folder you
+start from, and `--checkpoint latest` looks for them there.
+
+### 1. Check the scene (optional)
+
+Open the kitchen with 4 environments and a robot moving randomly, to see that the tables, robot, mixer and container
+spawn in the right places:
+
+```bash
+uv run --extra isaacsim isaaclab random_agent --task HestiaBeansPour-Franka-Kitchen-Pour --num_envs 4 --visualizer kit
+```
+
+### 2. Train
+
+```bash
+uv run --extra isaacsim isaaclab train --rl_library rsl_rl --task HestiaBeansPour-Franka-Kitchen-Pour --num_envs 1024
+```
+
+- Without `--visualizer` the training runs without a window (fastest). Add `--visualizer kit` to watch it.
+- `--max_iterations N` changes the length of the training (default 8000).
+- If the GPU runs out of memory, use fewer environments (`--num_envs 512`).
+- Results go to `logs/rsl_rl/franka_kitchen_pour/<date>_<time>_from_home/`. After every 10 % of the training the
+  current policy is saved there as `model_10pct.pt`, `model_20pct.pt`, ... `model_100pct.pt`; only the newest one is
+  kept. `model_100pct.pt` is the finished policy.
+
+Follow the training in TensorBoard (in a second terminal, then open http://localhost:6006):
+
+```bash
+uv run tensorboard --logdir logs/rsl_rl/franka_kitchen_pour
+```
+
+`Episode_Reward/progress` should rise first (approach, grasp, lift, carry, tilt), then `Episode_Reward/delivered`
+(beans that reach the mixer).
+
+### 3. Visualize the trained policy
+
+Play the newest checkpoint of the newest training run in the Isaac Sim viewer:
+
+```bash
+uv run --extra isaacsim isaaclab play --rl_library rsl_rl --task HestiaBeansPour-Franka-Kitchen-Pour \
+  --checkpoint latest --num_envs 1 --visualizer kit
+```
+
+- Another checkpoint: give its path instead of `latest`, e.g.
+  `--checkpoint logs/rsl_rl/franka_kitchen_pour/<run>/model_100pct.pt`. During a running training this is the
+  checkpoint saved last (e.g. `model_40pct.pt`), so you can look at the policy before the training ends.
+- Add `--real-time` to play at real speed and `--num_envs 4` to watch several environments at once.
+- Record a video instead of (or as well as) watching: add `--video --video_length 450` (450 steps = one 15 s
+  episode). The video is saved in `<run>/videos/play/`.
+- `play` also exports the policy for the real robot to `<run>/exported/policy.pt` (TorchScript) and
+  `<run>/exported/policy.onnx`. How to run it on the Panda is described in the training README.
+
+Before running the policy on the real robot, place the real container as in the table "Where the container stands"
+in `training/hestia_beans_pour/README.md`: handle towards the robot, centre 15 cm from the table's end and 20 cm from
+its front edge.
 
 ## Open decisions
 

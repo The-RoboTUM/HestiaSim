@@ -22,9 +22,7 @@ import torch
 
 import isaaclab.utils.math as math_utils
 
-from hestia_beans_pour.tasks.pour.mdp.observations import nearest_grasp_to_tcp_quat
-
-from .rewards import POTENTIAL_TERMS, kitchen_pour_potential_terms
+from .rewards import POTENTIAL_TERMS, handle_grasp_to_tcp_quat, kitchen_pour_potential_terms
 
 if TYPE_CHECKING:
     from ..kitchen_env import FrankaKitchenPourEnv
@@ -51,21 +49,21 @@ def mixer_pose_b_obs(env: FrankaKitchenPourEnv) -> torch.Tensor:
 
 
 def tcp_to_grasp_c_obs(env: FrankaKitchenPourEnv) -> torch.Tensor:
-    """Grasp point minus TCP, in the container frame [m]."""
+    """Handle grasp point minus TCP, in the container frame [m]."""
     cup = env.cup_pose_e()
     offset = env.cup_grasp_point_e() - env.tcp_pose_e()[:, :3]
     return torch.nan_to_num(math_utils.quat_apply_inverse(cup[:, 3:7], offset))
 
 
 def grasp_to_tcp_quat_obs(env: FrankaKitchenPourEnv) -> torch.Tensor:
-    """TCP orientation error to the nearest of the container's four side grasps."""
-    return nearest_grasp_to_tcp_quat(env)
+    """TCP orientation error to the nearer of the two (finger-swapped) handle grasps."""
+    return handle_grasp_to_tcp_quat(env)
 
 
 def mouth_to_target_b_obs(env: FrankaKitchenPourEnv) -> torch.Tensor:
-    """Pour target above the chute minus the container mouth, in the robot base frame [m]."""
+    """Pour target above the chute minus the container's pouring lip, in the robot base frame [m]."""
     root_quat = env._robot.data.root_link_pose_w.torch[:, 3:7]
-    return torch.nan_to_num(math_utils.quat_apply_inverse(root_quat, env.pour_target_e() - env.cup_mouth_e()))
+    return torch.nan_to_num(math_utils.quat_apply_inverse(root_quat, env.pour_target_e() - env.cup_pour_point_e()))
 
 
 def cup_tilt_obs(env: FrankaKitchenPourEnv) -> torch.Tensor:

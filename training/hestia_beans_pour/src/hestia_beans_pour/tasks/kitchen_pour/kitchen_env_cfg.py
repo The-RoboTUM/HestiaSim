@@ -6,9 +6,10 @@
 """Configuration of the kitchen beans-pour task (``HestiaBeansPour-Franka-Kitchen-Pour``).
 
 Reused from the pour task (``HestiaBeansPour-Franka-Pour``) unchanged: the Franka Panda (same USD, colliders, gains,
-gravity off), the source container with its beans, the action space, the PhysX settings and many MDP terms.
-New: the Hestia kitchen (``scenes/u_table_layout``), the mixer with its chute as the target, starting from the robot's
-home pose without a reset dataset, a camera-free (proprioceptive) actor, and noise for sim-to-real.
+gravity off), the beans, the action space, the PhysX settings and many MDP terms.
+New: the Hestia kitchen (``scenes/u_table_layout``), the real bean container (``components/container``, container01
+v2, grasped at its handle), the mixer with its chute as the target, starting from the robot's home pose without a
+reset dataset, a camera-free (proprioceptive) actor, and noise for sim-to-real.
 """
 
 from __future__ import annotations
@@ -27,7 +28,9 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sim.schemas import MassCfg, UsdPhysicsRigidBodyCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
+from isaaclab.sim.spawners.materials import RigidBodyMaterialBaseCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import UniformNoiseCfg as Unoise
 from isaaclab.visualizers import VisualizerCfg
@@ -36,17 +39,40 @@ from isaaclab_physx.physics import PhysxCfg
 from isaaclab_tasks.utils.presets import MultiBackendVisualizerCfg
 
 from ..pour.beans import BeanShape, bean_bounding_radius, bean_lattice_c, build_beans_collection_cfg
-from ..pour.geometry import SOURCE_CUP_GEOMETRY
-from ..pour.pour_env_cfg import _robot_cfg, _source_cup_asset_cfg
+from ..pour.geometry import CupGeometry
+from ..pour.pour_env_cfg import _robot_cfg
 from . import mdp
-from .layout import MIXER_COLLIDER_BOXES, kitchen_layout, write_kitchen_statics_usda
+from .layout import (
+    CONTAINER_CAVITY_CENTRE_X,
+    CONTAINER_CAVITY_HI,
+    CONTAINER_CAVITY_LO,
+    CONTAINER_FLOOR,
+    CONTAINER_WALL,
+    MIXER_COLLIDER_BOXES,
+    kitchen_layout,
+    write_container_usda,
+    write_kitchen_statics_usda,
+)
 
 LAYOUT = kitchen_layout()
 KITCHEN_STATICS_USD = write_kitchen_statics_usda()
 
-# Beans: the pour task's beans (~1 cm spheres, 0.6 g). "Half full": 5 layers of 11 mm = a 55 mm bean column in the
-# 110 mm deep container (45 beans). bean_lattice_c counts layers that fit in fill_level * depth incl. 6 mm clearance,
-# so 0.55 is the level that gives exactly the 5 layers (0.50 would give 4 layers = 40 %).
+# Container (components/container, container01 v2): mass is an estimate (292 cm^3 of material, PLA print) -> weigh the
+# real container and set env.container_mass. Friction as the pour task's source cup (it is held by friction only).
+_CONTAINER_MASS = 0.30
+_CONTAINER_FRICTION = 2.0
+CONTAINER_CAVITY = CupGeometry(
+    inner_width=CONTAINER_CAVITY_HI[0] - CONTAINER_CAVITY_LO[0],
+    inner_depth=CONTAINER_CAVITY_HI[1] - CONTAINER_CAVITY_LO[1],
+    cavity_depth=CONTAINER_CAVITY_HI[2] - CONTAINER_CAVITY_LO[2],
+    wall_thickness=CONTAINER_WALL,
+    bottom_thickness=CONTAINER_FLOOR,
+)
+"""The container's cavity (150 x 110 x 64.95 mm) as a centred cup; its centre is at x = CONTAINER_CAVITY_CENTRE_X."""
+
+# Beans: the pour task's beans (~1 cm spheres, 0.6 g). "Half full": 3 layers of 11 mm = a 33 mm bean column in the
+# 65 mm deep cavity (13 x 9 beans per layer, 351 beans, ~0.21 kg). bean_lattice_c counts the layers that fit in
+# fill_level * depth incl. 6 mm clearance: 0.55 gives the 3 layers (0.52 and below would give 2 layers = 34 %).
 _BEAN_SHAPE: BeanShape = "sphere"
 _BEAN_RADIUS = 0.005
 _BEAN_LENGTH = 0.004
@@ -70,7 +96,7 @@ def spawn_mixer(
     orientation: tuple[float, float, float, float] | None = None,
     **kwargs,
 ):
-    """Spawn the mixer USD (Mana v1) as one kinematic body with simplified box colliders.
+    """Spawn the mixer USD (mixer v2, Mana) as one kinematic body with simplified box colliders.
 
     The USD's own physics (rigid bowl and lid, convex-decomposition colliders) is removed: convex decomposition
     would close the chute hole, and nested rigid bodies are not allowed in a rigid object. The boxes of
@@ -121,12 +147,26 @@ def _kitchen_robot_cfg():
     return robot
 
 
-def _kitchen_cup_cfg() -> RigidObjectCfg:
-    """The pour task's source container, standing at its spot on the middle table."""
-    cup = _source_cup_asset_cfg()
-    cup.init_state.pos = LAYOUT.cup_pos
-    cup.init_state.rot = LAYOUT.cup_rot
-    return cup
+def _container_cfg() -> RigidObjectCfg:
+    """The bean container (components/container, container01 v2), standing at its spot on the middle table.
+
+    Spawned from a generated USD (:func:`layout.write_container_usda`): one dynamic rigid body made of box colliders
+    (floor, four walls, the handle's bar and leg). The scene key stays ``source_cup`` because the reused pour-task
+    terms read ``env._source_cup``.
+    """
+    return RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Container",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=LAYOUT.cup_pos, rot=LAYOUT.cup_rot),
+        spawn=UsdFileCfg(
+            usd_path=write_container_usda(mass=_CONTAINER_MASS),
+            mass_props=MassCfg(mass=_CONTAINER_MASS),
+            rigid_props=UsdPhysicsRigidBodyCfg(rigid_body_enabled=True, kinematic_enabled=False),
+            physics_material=RigidBodyMaterialBaseCfg(
+                static_friction=_CONTAINER_FRICTION,
+                dynamic_friction=_CONTAINER_FRICTION,
+            ),
+        ),
+    )
 
 
 def _mixer_cfg() -> RigidObjectCfg:
@@ -137,15 +177,52 @@ def _mixer_cfg() -> RigidObjectCfg:
     )
 
 
-def _default_beans_cfg() -> RigidObjectCollectionCfg:
+def container_bean_positions(
+    shape: BeanShape = _BEAN_SHAPE,
+    radius: float = _BEAN_RADIUS,
+    length: float = _BEAN_LENGTH,
+    gap: float = _BEAN_GAP,
+    fill_level: float = _BEAN_FILL_LEVEL,
+    num_beans: int | None = None,
+) -> list[tuple[float, float, float]]:
+    """Collision-free bean lattice in the container's cavity, in the container frame [m]."""
     positions = bean_lattice_c(
-        SOURCE_CUP_GEOMETRY,
-        bounding_radius=bean_bounding_radius(_BEAN_SHAPE, _BEAN_RADIUS, _BEAN_LENGTH),
-        gap=_BEAN_GAP,
-        fill_level=_BEAN_FILL_LEVEL,
+        CONTAINER_CAVITY,
+        bounding_radius=bean_bounding_radius(shape, radius, length),
+        gap=gap,
+        fill_level=fill_level,
+        max_beans=num_beans,
     )
+    # bean_lattice_c centres the lattice on the frame origin; the cavity is shifted towards -x (handle on +x)
+    return [(x + CONTAINER_CAVITY_CENTRE_X, y, z) for x, y, z in positions]
+
+
+def beans_local_positions(cfg: FrankaKitchenPourEnvCfg) -> list[tuple[float, float, float]]:
+    """Bean lattice for the current (possibly command-line overridden) bean settings."""
+    return container_bean_positions(
+        cfg.bean_shape, cfg.bean_radius, cfg.bean_length, cfg.bean_gap, cfg.bean_fill_level, cfg.num_beans
+    )
+
+
+def configure_scene(cfg: FrankaKitchenPourEnvCfg) -> None:
+    """Apply command-line overrides that change the scene: rebuild the bean collection, set the container mass."""
+    cfg.scene.beans = build_beans_collection_cfg(
+        beans_local_positions(cfg),
+        cup_pos=tuple(cfg.scene.source_cup.init_state.pos),
+        shape=cfg.bean_shape,
+        radius=cfg.bean_radius,
+        length=cfg.bean_length,
+        mass=cfg.bean_mass,
+        friction=cfg.bean_friction,
+        restitution=cfg.bean_restitution,
+        color=cfg.bean_color,
+    )
+    cfg.scene.source_cup.spawn.mass_props.mass = float(cfg.container_mass)
+
+
+def _default_beans_cfg() -> RigidObjectCollectionCfg:
     return build_beans_collection_cfg(
-        positions,
+        container_bean_positions(),
         cup_pos=LAYOUT.cup_pos,
         shape=_BEAN_SHAPE,
         radius=_BEAN_RADIUS,
@@ -172,7 +249,7 @@ class KitchenPourSceneCfg(InteractiveSceneCfg):
     )
     robot = _kitchen_robot_cfg()
     mixer: RigidObjectCfg = _mixer_cfg()
-    source_cup: RigidObjectCfg = _kitchen_cup_cfg()
+    source_cup: RigidObjectCfg = _container_cfg()
     beans: RigidObjectCollectionCfg = _default_beans_cfg()
 
 
@@ -198,7 +275,9 @@ class ActionsCfg:
         asset_name="robot",
         joint_names=["panda_finger.*"],
         alpha=1.0 - (1.0 - 0.2) ** (1.0 / 3.0),
-        close_position=0.021,
+        # the handle is 20 mm wide (10 mm per finger): closing to 0 presses each finger 10 mm into the drive
+        # (~20 N with the Franka finger gains), needed to hold the container by its handle
+        close_position=0.0,
         neutral_position=0.04,
         default_position=0.04,  # episodes start with the hand open
         contact_min_deflection=0.001,
@@ -303,7 +382,8 @@ class EventsCfg:
 
 @configclass
 class FrankaKitchenPourEnvCfg(ManagerBasedRLEnvCfg):
-    """Franka pours a half-full container of beans from the middle table into the mixer's chute (PhysX)."""
+    """Franka grasps the half-full bean container on the middle table by its handle and pours the beans into the
+    mixer's chute (PhysX)."""
 
     class_type: type | str = "hestia_beans_pour.tasks.kitchen_pour.kitchen_env:FrankaKitchenPourEnv"
 
@@ -339,7 +419,11 @@ class FrankaKitchenPourEnvCfg(ManagerBasedRLEnvCfg):
     bean_fill_level: float = _BEAN_FILL_LEVEL
     """Half full, see the comment at ``_BEAN_FILL_LEVEL``."""
     num_beans: int | None = None
+    """Exact bean count (filled bottom layer first); ``None`` = all beans up to ``bean_fill_level`` (351)."""
     bean_reset_jitter: float = 0.0004
+
+    container_mass: float = _CONTAINER_MASS
+    """Mass of the empty container [kg] (estimate; set it to the weighed real container)."""
 
     pour_target_frac: float = 0.85
     """Fraction of the beans that must be in the mixer (chute or bowl) for success."""
@@ -408,8 +492,13 @@ class FrankaKitchenPourEnvCfg(ManagerBasedRLEnvCfg):
                 raise ValueError(f"{name} must be finite and nonnegative.")
         if self.bean_reset_jitter > 0.0 and 2.0 * self.bean_reset_jitter >= self.bean_gap:
             raise ValueError("bean_reset_jitter must be smaller than bean_gap / 2.")
+        if not math.isfinite(float(self.container_mass)) or float(self.container_mass) <= 0.0:
+            raise ValueError("container_mass must be finite and positive.")
         if self.cup_pos_noise > 0.02:
-            raise ValueError("cup_pos_noise above 2 cm exceeds what a blind grasp can tolerate (gripper opening 8 cm).")
+            raise ValueError(
+                "cup_pos_noise above 2 cm exceeds what a blind grasp can tolerate (8 cm gripper opening around the "
+                "20 mm handle, only ~1 cm between the fingers and the box wall along the handle)."
+            )
 
     def play_mode(self) -> None:
         """One environment, camera on the robot and the mixer."""

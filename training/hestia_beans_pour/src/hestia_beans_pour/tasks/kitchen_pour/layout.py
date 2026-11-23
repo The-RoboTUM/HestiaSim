@@ -8,17 +8,20 @@
 Every table, robot and mixer position comes from ``scenes/u_table_layout/u_layout.py`` (the single source of truth of
 the U table layout), so the training always matches the scene. This module only adds what the task needs on top:
 
-* where the source container stands on the middle (bottom) table,
+* the bean container (``components/container``, container01 v2) as box colliders, and where it stands on the middle
+  (bottom) table,
 * simplified collision boxes of the mixer (the mixer USD's convex-decomposition colliders would close the chute hole),
 * the regions that count beans as delivered into the mixer or spilled,
-* a generated USD file with box colliders for the three tables and the Panda adapter plate.
+* generated USD files: box colliders for the three tables and the Panda adapter plate, and the container.
 
 Frames
 ------
 *Env frame* = the U-layout world frame: origin on the floor at the centre of the bottom table, metres, Z-up.
+*Container frame* = the frame of ``components/container/container01_v2.stl`` (and of the current v3, same frame; converted from mm to m): origin
+at the centre of the bottom face of its bounding box (handle included), ``+x`` = the side with the handle.
 *Mixer frame* = the root of the mixer USD (prim ``mum8``): 0.233 m above the mixer's bottom, so ``z = 0`` is the top
 of the lid plate; ``+x`` = the mixer's front (bowl / chute side). All mixer numbers below were measured from
-``components/mixer/mum8_chute_mana_v1_nov22.usda`` (Mana v1) and ``mum8_v10_vs_original.png``.
+``components/mixer/mum8_chute_v2.usda`` (mixer v2, Mana) and ``mum8_v10_vs_original.png``.
 Quaternions handed to Isaac Lab are ``(x, y, z, w)`` (Isaac Lab 3.x convention).
 """
 
@@ -69,17 +72,79 @@ def quat_xyzw_from_yaw(yaw_deg: float) -> tuple[float, float, float, float]:
 
 
 ##
-# Source container on the middle table
+# Bean container (components/container, measured on container01_v2.stl), in the container frame [m]
+##
+# Measured from the STL (sections through the mesh): an open rectangular box, 160 x 120 mm outside, 69.95 mm high,
+# 5 mm walls and a 5 mm floor (corners rounded with ~4 mm, ignored here), plus a 20 mm wide hook-shaped handle on
+# the +x side: a top bar flush with the rim (x 65..95, z 55..69.95) and a leg hanging down at its outer end
+# (x 80..95, down to z ~10, rounded at the bottom). Between the leg and the box wall is a 15 mm slot, open at the
+# bottom. The gripper (max. 80 mm) cannot span the box, so the container is grasped at the handle.
+
+CONTAINER_STL = "components/container/container01_v3.stl"  # current version (simplified v2, same shape within 0.03 mm)
+CONTAINER_BODY_X = (-0.095, 0.065)
+CONTAINER_HALF_Y = 0.060
+CONTAINER_HEIGHT = 0.06995
+CONTAINER_WALL = 0.005
+CONTAINER_FLOOR = 0.005
+HANDLE_HALF_Y = 0.010
+HANDLE_BAR_X = (0.065, 0.095)
+HANDLE_BAR_Z = (0.055, CONTAINER_HEIGHT)
+HANDLE_LEG_X = (0.080, 0.095)
+HANDLE_LEG_Z = (0.012, 0.055)
+
+CONTAINER_CAVITY_LO = (CONTAINER_BODY_X[0] + CONTAINER_WALL, -CONTAINER_HALF_Y + CONTAINER_WALL, CONTAINER_FLOOR)
+CONTAINER_CAVITY_HI = (CONTAINER_BODY_X[1] - CONTAINER_WALL, CONTAINER_HALF_Y - CONTAINER_WALL, CONTAINER_HEIGHT)
+"""Inner cavity (x -0.090..0.060, y +-0.055, z 0.005..0.06995): 150 x 110 x 64.95 mm."""
+CONTAINER_CAVITY_CENTRE_X = 0.5 * (CONTAINER_CAVITY_LO[0] + CONTAINER_CAVITY_HI[0])
+"""The cavity is 15 mm off the frame origin (towards -x), because the handle sticks out on +x."""
+
+HANDLE_GRASP_POINT = (0.0875, 0.0, 0.050)
+"""Where the TCP holds the handle: middle of the leg, 20 mm below the rim (fingertips stay above the table)."""
+HANDLE_GRASP_TCP_QUAT = (0.0, 1.0, 0.0, 0.0)
+"""TCP orientation for the handle grasp, ``(x, y, z, w)`` in the container frame: 180 deg about y = gripper pointing
+straight down, fingers closing along the container's y axis across the 20 mm handle. The grasp turned by 180 deg about
+the TCP axis (fingers swapped) is equivalent."""
+HANDLE_WIDTH = 2.0 * HANDLE_HALF_Y
+"""Gripper width when holding the handle [m]."""
+
+
+def container_rim_points() -> tuple[tuple[float, float, float], ...]:
+    """Corners and edge midpoints of the cavity's rim, in the container frame (the possible pouring lips)."""
+    (x0, y0, _), (x1, y1, z) = CONTAINER_CAVITY_LO, CONTAINER_CAVITY_HI
+    xm = 0.5 * (x0 + x1)
+    return ((x0, y0, z), (x0, y1, z), (x1, y0, z), (x1, y1, z), (x0, 0.0, z), (x1, 0.0, z), (xm, y0, z), (xm, y1, z))
+
+
+def container_collider_boxes() -> tuple[tuple[str, tuple[float, float, float], tuple[float, float, float]], ...]:
+    """``(name, centre, half extents)`` of the container's box colliders (floor, 4 walls, handle bar and leg)."""
+    (bx0, bx1), hy, h = CONTAINER_BODY_X, CONTAINER_HALF_Y, CONTAINER_HEIGHT
+    (cx0, cy0, _), (cx1, cy1, _) = CONTAINER_CAVITY_LO, CONTAINER_CAVITY_HI
+    boxes = {
+        "floor": _box((bx0, bx1), (-hy, hy), (0.0, CONTAINER_FLOOR)),
+        "wall_px": _box((cx1, bx1), (-hy, hy), (CONTAINER_FLOOR, h)),
+        "wall_nx": _box((bx0, cx0), (-hy, hy), (CONTAINER_FLOOR, h)),
+        "wall_py": _box((cx0, cx1), (cy1, hy), (CONTAINER_FLOOR, h)),
+        "wall_ny": _box((cx0, cx1), (-hy, cy0), (CONTAINER_FLOOR, h)),
+        "handle_bar": _box(HANDLE_BAR_X, (-HANDLE_HALF_Y, HANDLE_HALF_Y), HANDLE_BAR_Z),
+        "handle_leg": _box(HANDLE_LEG_X, (-HANDLE_HALF_Y, HANDLE_HALF_Y), HANDLE_LEG_Z),
+    }
+    return tuple((name, centre, half) for name, (centre, half, _) in boxes.items())
+
+
+##
+# Container placement on the middle table
 ##
 
 SOURCE_TABLE = "TableBottom"
 """The middle table of the U (between the two side tables)."""
 CUP_CENTRE_FROM_END = 0.15
-"""Container centre -> the bottom table's +x end (the end that touches the LEFT table, the mixer side) [m]."""
+"""Container frame origin (centre of its 190 x 120 mm footprint, handle included) -> the bottom table's +x end (the end
+that touches the LEFT table, the robot / mixer side) [m]."""
 CUP_CENTRE_FROM_FRONT = 0.20
-"""Container centre -> the bottom table's front edge (the edge facing the inside of the U) [m]."""
+"""Container frame origin -> the bottom table's front edge (the edge facing the inside of the U) [m]."""
 CUP_YAW_DEG = 0.0
-"""Container yaw relative to the bottom table: 0 = its sides parallel to the table edges."""
+"""Container yaw relative to the bottom table: 0 = its sides parallel to the table edges, handle (+x) pointing to the
+table's +x end, i.e. towards the left table and the robot."""
 
 ##
 # Mixer geometry in the mixer frame (z = 0 at the top of the lid plate, +x = front)
@@ -343,13 +408,55 @@ def kitchen_statics_usda() -> str:
     return "\n".join(lines)
 
 
-def write_kitchen_statics_usda(directory: str | os.PathLike | None = None) -> str:
-    """Write :func:`kitchen_statics_usda` once (content-addressed, atomic) and return its path."""
-    text = kitchen_statics_usda()
+_CONTAINER_COLOR = (0.92, 0.92, 0.88)
+
+
+def container_usda(mass: float = 0.30) -> str:
+    """USD text of the bean container: one rigid body (root prim) with visible box colliders.
+
+    The boxes are the container's real shape up to the ~4 mm corner roundings and the rounded bottom of the handle
+    leg; the full STL (1.6M triangles) is not needed without cameras. ``mass`` is authored on the root, PhysX
+    derives centre of mass and inertia from the boxes (uniform material)."""
+    lines = [
+        "#usda 1.0",
+        "(",
+        '    defaultPrim = "Container"',
+        "    metersPerUnit = 1",
+        '    upAxis = "Z"',
+        ")",
+        "",
+        'def Xform "Container" (',
+        '    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]',
+        ")",
+        "{",
+        f"    float physics:mass = {float(mass):.6f}",
+    ]
+    for name, centre, half in container_collider_boxes():
+        lines.extend(
+            [
+                f'    def Cube "{name}" (',
+                '        prepend apiSchemas = ["PhysicsCollisionAPI"]',
+                "    )",
+                "    {",
+                "        double size = 1",
+                "        bool physics:collisionEnabled = 1",
+                f"        color3f[] primvars:displayColor = [{_CONTAINER_COLOR}]",
+                f"        double3 xformOp:translate = ({centre[0]:.6f}, {centre[1]:.6f}, {centre[2]:.6f})",
+                f"        float3 xformOp:scale = ({2 * half[0]:.6f}, {2 * half[1]:.6f}, {2 * half[2]:.6f})",
+                '        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]',
+                "    }",
+            ]
+        )
+    lines.extend(["}", ""])
+    return "\n".join(lines)
+
+
+def _write_content_addressed(text: str, stem: str, directory: str | os.PathLike | None) -> str:
+    """Write ``text`` once as ``<stem>_<hash>.usda`` (atomic) and return its path."""
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
     folder = Path(directory) if directory is not None else Path(tempfile.gettempdir()) / "hestia_kitchen_pour"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"kitchen_statics_{digest}.usda"
+    path = folder / f"{stem}_{digest}.usda"
     if not path.is_file():
         tmp = folder / f".{path.name}.{os.getpid()}.tmp"
         tmp.write_text(text, encoding="utf-8")
@@ -357,14 +464,56 @@ def write_kitchen_statics_usda(directory: str | os.PathLike | None = None) -> st
     return str(path)
 
 
-def placement_report() -> str:
-    """Where to put the real container on the middle table (for the real kitchen)."""
+def write_kitchen_statics_usda(directory: str | os.PathLike | None = None) -> str:
+    """Write :func:`kitchen_statics_usda` once (content-addressed, atomic) and return its path."""
+    return _write_content_addressed(kitchen_statics_usda(), "kitchen_statics", directory)
+
+
+def write_container_usda(directory: str | os.PathLike | None = None, mass: float = 0.30) -> str:
+    """Write :func:`container_usda` once (content-addressed, atomic) and return its path."""
+    return _write_content_addressed(container_usda(mass), "container01_v2", directory)
+
+
+def container_footprint_world() -> dict[str, tuple[float, float, float, float]]:
+    """Nominal footprint of the container on the bottom table, env frame: ``{part: (x_min, x_max, y_min, y_max)}``
+    for the box (``"body"``) and the handle. Only valid for the axis-aligned placement (yaw 0 or 180 deg)."""
     lay = kitchen_layout()
-    half = 0.028  # outer half width of the Franka Pour source cup (21 mm cavity + 7 mm wall)
-    end = lay.source_table_edges["end_x"] - lay.cup_pos[0]
-    front = lay.source_table_edges["front_y"] - lay.cup_pos[1]
-    return (
-        f"container centre: {100 * end:.1f} cm from the bottom table's end at the left table (mixer side), "
-        f"{100 * front:.1f} cm from its front edge; container walls: {100 * (end - half):.1f} cm / "
-        f"{100 * (front - half):.1f} cm; sides parallel to the table edges."
+    c, s = math.cos(math.radians(lay.cup_yaw_deg)), math.sin(math.radians(lay.cup_yaw_deg))
+    if abs(s) > 1.0e-9:
+        raise ValueError("container_footprint_world() needs an axis-aligned container (yaw 0 or 180 deg).")
+    parts = {
+        "body": (CONTAINER_BODY_X, (-CONTAINER_HALF_Y, CONTAINER_HALF_Y)),
+        "handle": ((HANDLE_BAR_X[0], HANDLE_BAR_X[1]), (-HANDLE_HALF_Y, HANDLE_HALF_Y)),
+    }
+    out = {}
+    for name, ((x0, x1), (y0, y1)) in parts.items():
+        xs = sorted((lay.cup_pos[0] + c * x0, lay.cup_pos[0] + c * x1))
+        ys = sorted((lay.cup_pos[1] + c * y0, lay.cup_pos[1] + c * y1))
+        out[name] = (xs[0], xs[1], ys[0], ys[1])
+    return out
+
+
+def placement_report() -> str:
+    """Where to put the real container on the middle table (for the real kitchen / sim-to-real)."""
+    lay = kitchen_layout()
+    end_x, front_y = lay.source_table_edges["end_x"], lay.source_table_edges["front_y"]
+    fp = container_footprint_world()
+    body, handle = fp["body"], fp["handle"]
+    grasp = (lay.cup_pos[0] + HANDLE_GRASP_POINT[0], lay.cup_pos[1] + HANDLE_GRASP_POINT[1])
+    return "\n".join(
+        [
+            "Container 01 v2 on the middle (bottom) table, sides parallel to the table edges, handle pointing to the "
+            "table's end at the left table (robot side):",
+            f"  footprint origin (centre of the 190 x 120 mm footprint incl. handle): "
+            f"{100 * (end_x - lay.cup_pos[0]):.1f} cm from that end, {100 * (front_y - lay.cup_pos[1]):.1f} cm from "
+            f"the front edge; env frame x {lay.cup_pos[0]:.4f} m, y {lay.cup_pos[1]:.4f} m, on the top at "
+            f"z {lay.table_top:.3f} m",
+            f"  handle tip -> table end: {100 * (end_x - handle[1]):.1f} cm; box wall at the handle -> table end: "
+            f"{100 * (end_x - body[1]):.1f} cm; far box wall -> table end: {100 * (end_x - body[0]):.1f} cm",
+            f"  front box wall -> front edge: {100 * (front_y - body[3]):.1f} cm; back box wall -> front edge: "
+            f"{100 * (front_y - body[2]):.1f} cm; handle centre line -> front edge: "
+            f"{100 * (front_y - lay.cup_pos[1]):.1f} cm",
+            f"  handle grasp point (env frame): x {grasp[0]:.4f} m, y {grasp[1]:.4f} m, "
+            f"z {lay.table_top + HANDLE_GRASP_POINT[2]:.4f} m",
+        ]
     )

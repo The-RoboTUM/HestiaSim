@@ -92,3 +92,12 @@ from below (whether a Panda finger fits there is not checked).
 Mass in Isaac: set the mass and centre of mass explicitly (mass = 292 cm³ x density; centre of mass
 (-7.6, 0, 26.6) mm from v3) instead of letting Isaac compute them from the boxes, whose volume is 0.6 %
 larger (293.8 cm³, square handle corners).
+
+## Use in the training
+
+The kitchen pour training (`training/hestia_beans_pour`, task `HestiaBeansPour-Franka-Kitchen-Pour`) uses this
+container as the bean container. It does not load the STL: `tasks/kitchen_pour/layout.py` rebuilds it from the
+measurements above (v2) as 7 boxes (bottom, 4 walls, handle top bar, handle outer bar) and writes them to a small USD
+file. The Panda grasps it at the handle from above (fingers across the 20 mm width). Mass in the sim: 0.30 kg, an
+estimate for a PLA print; weigh the real one and pass `env.container_mass=<kg>`. Where it stands on the table: see
+the training README ("Kitchen beans pour").
