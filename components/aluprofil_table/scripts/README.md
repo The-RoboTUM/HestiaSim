@@ -10,9 +10,9 @@ Run everything from this `scripts/` folder; results go one level up (`../`, `../
 ```bash
 B="uv run --no-project --with trimesh --with shapely --with mapbox-earcut --with matplotlib"
 
-$B python export_stl.py --suffix _<author>_v<N>_<date>          # ../alu_table_*.stl (mm)
-$B python make_drawing.py --suffix _<author>_v<N>_<date>        # ../drawings/alu_table_drawing_*.pdf/.png
-$B python make_settings_sheet.py --suffix _<author>_v<N>_<date> # ../drawings/alu_table_settings_*.pdf/.png
+$B python export_stl.py --suffix _v<N>          # ../alu_table_*.stl (mm)
+$B python make_drawing.py --suffix _v<N>        # ../drawings/alu_table_drawing_*.pdf/.png
+$B python make_settings_sheet.py --suffix _v<N> # ../drawings/alu_table_settings_*.pdf/.png
 
 # laptop preview without Isaac (MuJoCo viewer); --drop-test --steps 300 = headless check with test cubes
 $B --with mujoco --with scipy --with networkx python preview_mujoco.py
@@ -20,13 +20,13 @@ $B --with mujoco --with scipy --with networkx python preview_mujoco.py
 
 **Table types** (`--type`, every script): `standard` = the measured lab table with the two diagonal braces;
 `no_brace` = the same table without the braces (and without their plank notches). Output files carry the
-type in their name, e.g. `alu_table_no_brace_jeffrey_v1_nov22.stl`, `meshes/alu_table_no_brace.obj`.
+type in their name, e.g. `alu_table_no_brace_v2.stl`, `meshes/alu_table_no_brace.obj`.
 
 Every script takes the same table options as `make_table.py` (see `python make_table.py --help`),
 e.g. `--leg 0.60 --back-leg 1.42` for a top 100 mm higher. Defaults = the real lab table, measured
 2026-11-22: 1800 x 960 frame, top at 680 mm, highest point 1535 mm.
 
-File names follow the repo pattern `<model>_<author>_v<N>_<date>`, e.g. `--suffix _jeffrey_v2_dec01`.
+File names follow the repo pattern `<part>_v<N>` (see the repo README), e.g. `--suffix _v2`.
 
 | Script | Does |
 |---|---|

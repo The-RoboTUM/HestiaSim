@@ -1,17 +1,11 @@
 # Container
 
-Container 01, received as `container01_v2.stl` on 2026-11-23 (author not recorded yet). The HestiaSim
-name keeps the sender's version, `v2`.
+Container 01 with one handle.
 
-| | |
-|---|---|
-| Size | 190 x 120 x 69.95 mm (x × y × z), closed (watertight) mesh, 1.59M triangles |
-
-| File | Content |
-|---|---|
-| `container01_v2_nov23.stl` | container, **mm**, Z-up, origin = centre of its bottom face |
-
-The original file was exported in **metres** at an assembly offset (z ≈ 1000.9 m). This copy was
-scaled ×1000 to mm and moved so the bottom centre is at the origin. The shape itself was not changed.
-
-For MuJoCo / Isaac use a simplified copy (about 150k triangles looks the same in the viewer).
+- Made by: unknown (received 2026-11-23 as `container01_v2.stl`)
+- Current file: `container01_v2.stl` (mm)
+- Origin and front: centre of the bottom face; +x = handle side (handle 20 mm wide, sticks out 30 mm)
+- Size: 190 x 120 x 70 mm (body without handle 160 x 120 mm)
+- Changes made here: received in metres at an assembly offset (z ≈ 1000.9 m); scaled x1000 to mm and
+  moved so the bottom centre is at the origin; shape unchanged. 79 MB / 1.6M triangles: use a
+  simplified copy for simulation (the U-layout preview simplifies it on load).
