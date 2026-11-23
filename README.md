@@ -54,6 +54,15 @@ Every component and scene folder has its own README with the details.
 ```
 
 These lines are the minimum; add details below them when useful (measurements, settings, how to regenerate).
+With more than one version, replace "Made by", "Current file" and "Changes made here" with a version table
+(see `components/mixer/README.md`):
+
+```markdown
+| Version | File | Made by | What changed |
+|---|---|---|---|
+| v1 | `<part>_v1.stl` (mm) | <name> | <first model> |
+| **v2 (current)** | `<part>_v2.stl` (mm) | <name> | <what is different> |
+```
 
 ## Scene README
 

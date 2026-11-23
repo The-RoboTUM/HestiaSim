@@ -37,10 +37,11 @@ def mixer_extra(places, top: float):
 def container_extra(places, top: float):
     mesh = trimesh.load(u_layout.CONTAINER_STL, force="mesh")
     mesh.apply_scale(0.001)  # STL in mm -> m (origin already at its bottom centre)
-    try:  # 1.6M triangles: simplify for the viewer (needs fast-simplification; looks the same)
-        mesh = mesh.simplify_quadric_decimation(face_count=150_000)
-    except Exception:  # noqa: BLE001  (package missing: show the full mesh, slower to load)
-        pass
+    if len(mesh.faces) > 150_000:  # only for a heavy mesh (e.g. v2, 1.6M triangles); v3 has 50k
+        try:  # needs fast-simplification; looks the same
+            mesh = mesh.simplify_quadric_decimation(face_count=150_000)
+        except Exception:  # noqa: BLE001  (package missing: show the full mesh, slower to load)
+            pass
     x, y, yaw = u_layout.container_pose(places)
     print(f"[INFO] Container    x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg (handle west), "
           f"on {u_layout.CONTAINER_TABLE} at z={top:.3f}")

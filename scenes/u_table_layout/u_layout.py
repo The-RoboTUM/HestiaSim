@@ -77,7 +77,7 @@ ROBOT_FACING_DEG = 135.0  # world yaw of the robot's front ("south-east", see th
 JOINT1_IN_PLATE = (0.0, 0.0085)  # m, robot's vertical axis in plate coordinates (8.5 mm off-centre, measured)
 
 
-# Container (components/container, container01 v2): 190 x 120 x 70 mm, STL in mm, origin = centre of its bottom
+# Container (components/container, container01 v3 = simplified copy of v2, 50k triangles): 190 x 120 x 70 mm, STL in mm, origin = centre of its bottom
 # face. Body x -0.095..+0.065 m, the HANDLE sticks out at +x (+0.065..+0.095 m, 20 mm wide) in its own frame.
 # It stands on the BOTTOM table (the one in front of you in the opening) at its end next to the robot, the
 # handle pointing west (+x world, towards the left table / the robot), square to the table (yaw 0) for now;
@@ -86,7 +86,7 @@ JOINT1_IN_PLATE = (0.0, 0.0085)  # m, robot's vertical axis in plate coordinates
 # CUP_CENTRE_FROM_END / CUP_CENTRE_FROM_FRONT); keep the two equal. Fixed spot for now: the container will be
 # spawned at random positions later. (2026-11-23: moved from handle tip 150 mm / body 100 mm from the edges.)
 CONTAINER_DIR = os.path.join(REPO, "components", "container")
-CONTAINER_STL = os.path.join(CONTAINER_DIR, "container01_v2.stl")  # mm
+CONTAINER_STL = os.path.join(CONTAINER_DIR, "container01_v3.stl")  # mm, 2.5 MB (v2 = 79 MB full detail)
 CONTAINER_TABLE = "TableBottom"
 CONTAINER_CENTRE_FROM_END = 0.15  # m, container origin -> the bottom table's +x end (= kitchen pour)
 CONTAINER_CENTRE_FROM_FRONT = 0.20  # m, container origin -> the bottom table's front edge, +y (= kitchen pour)

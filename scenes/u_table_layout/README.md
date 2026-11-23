@@ -39,7 +39,7 @@ Overall 3720 x 2280 mm, inside opening 1800 mm.
 | Mixer (`mixer` v2, Mana) | +1.25 | +0.90 | 180° (front to the inside of the U) | left table top (z 0.68) |
 | Panda adapter (`panda_adapter` v1) | +1.175 | +0.250 | -135° (robot faces +135°, "south-east") | left table top; edge 75 mm from its end next to the bottom table, 100 mm from its front edge |
 | Franka Panda (`franka_panda` v1) | +1.181 | +0.244 | +135° ("south-east") | adapter (z 0.69), upright home pose |
-| Container (`container` v2) | +0.750 | +0.280 | 0° (handle west) | bottom table top (z 0.68); centre 15 cm from its end next to the robot, 20 cm from its front edge (same as the kitchen pour training), 0.43 m from the robot axis |
+| Container (`container` v3, simplified) | +0.750 | +0.280 | 0° (handle west) | bottom table top (z 0.68); centre 15 cm from its end next to the robot, 20 cm from its front edge (same as the kitchen pour training), 0.43 m from the robot axis |
 
 All positions live in `u_layout.py` (`placements()`, `MIXER_ON`, `ADAPTER_*`, `ROBOT_FACING_DEG`,
 `CONTAINER_*`); the preview and the spawn script both read it.
