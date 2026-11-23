@@ -4,6 +4,8 @@ An installable downstream Isaac Lab task package with a standard uv `src` layout
 
 The registered tasks are:
 - `HestiaBeansPour-Franka-Pour` — Franka Panda pours rigid beans from one cup into another (Isaac Sim PhysX)
+- `HestiaBeansPour-Franka-Kitchen-Pour` — the same Franka pours beans from a container on the middle table of the
+  Hestia kitchen into the mixer's chute (see [Kitchen beans pour](#kitchen-beans-pour))
 - `HestiaBeansPour-Balance-Cartpole`
 - `HestiaBeansPour-Balance-Cartpole-Direct`
 - `HestiaBeansPour-Balance-Marl-Cartpole-Direct`
@@ -63,6 +65,56 @@ uv run --extra isaacsim isaaclab train --rl_library rsl_rl --task HestiaBeansPou
 
 Each bean is a separate rigid body, so the cost grows with `num_envs × num_beans`. On an RTX 5090, 1024 envs with 54
 beans run at about 9,000 env-steps/s.
+
+## Kitchen beans pour
+
+`HestiaBeansPour-Franka-Kitchen-Pour` (in `src/hestia_beans_pour/tasks/kitchen_pour`) puts the pour task's robot and
+container into the Hestia kitchen of `scenes/u_table_layout`:
+
+- **Scene:** the three tables of the U, the Panda on its adapter plate on the left table in the scene's mounting pose
+  (x 1.181, y 0.244, z 0.69 m, facing +135°), and the mixer (Mana v1) in the middle of the left table. All poses are
+  read from `scenes/u_table_layout/u_layout.py` at start-up. The tables and the adapter are box colliders generated
+  from the same layout. The mixer keeps its meshes for looks, but its colliders are boxes, so the chute hole stays open
+  (the USD's convex decomposition closes it). The bowl and lid are part of one kinematic body.
+- **Robot:** the pour task's Franka unchanged (`pour_env_cfg._robot_cfg()`: same USD, collision proxies, gains, gravity
+  off). It starts in the scene's home pose. The actions are the same: filtered relative joint deltas plus a binary
+  gripper.
+- **Container:** the pour task's source cup (56 × 56 × 119 mm outside, 42 × 42 × 110 mm cavity) with its beans,
+  **half full** (5 layers, 45 beans of Ø10 mm, 55 of the 110 mm). It always stands at the same spot on the middle
+  table: centre **15 cm from the table's end at the left table and 20 cm from its front edge**, with its sides
+  parallel to the table edges.
+- **Goal:** at least 85 % of the beans end up in the mixer (in the chute or the bowl). It fails if more than 15 % are
+  spilled or the container falls off or tips over.
+- **No cameras:** the actor sees only arm joint positions and velocities, finger positions, its gripper command, its
+  last action and the time left. All of these are measured on the real robot. The critic also gets the privileged
+  scene state (container pose, beans, task stage); it is only used in training.
+- **Learning without a reset dataset:** the pour task's reset dataset was made for its own lab scene, so it does not
+  fit the kitchen. Here episodes start at home (15 s). Learning is driven by the change of one bounded staged potential
+  (approach → grasp → lift → container mouth above the chute → tilt). Holding a state therefore earns nothing. On top
+  come the change in delivered and spilled beans, a success bonus and a failure penalty.
+- **Noise for deployment:** each reset moves the container by ±1 cm and ±10°, the mixer by ±5 mm and ±2°, and the arm's
+  start pose by ±0.03 rad. The actor's observations get uniform sensor noise. The applied joint deltas get Gaussian
+  actuation noise (σ 0.002 rad). All ranges are env-cfg fields (`cup_pos_noise`, `mixer_pos_noise`, …).
+
+```bash
+uv run --extra isaacsim isaaclab random_agent --task HestiaBeansPour-Franka-Kitchen-Pour --num_envs 4 --visualizer kit
+uv run --extra isaacsim isaaclab train --rl_library rsl_rl --task HestiaBeansPour-Franka-Kitchen-Pour --num_envs 1024
+uv run --extra isaacsim isaaclab play --rl_library rsl_rl --task HestiaBeansPour-Franka-Kitchen-Pour \
+  --checkpoint latest --num_envs 1 --visualizer kit
+```
+
+Things to check on the first run (this task was written without running Isaac Sim):
+- The scene spawns correctly: the robot stands on the adapter, the mixer is on the left table and the container is
+  on the middle table. Beans poured into the funnel should fall into the bowl.
+- In TensorBoard, `Episode_Reward/progress` should rise stage by stage, followed by `delivered`.
+- If learning stalls at the grasp, lower the noise first (for example `env.cup_pos_noise=0.005`).
+
+On the real robot, run the exported actor at 30 Hz with the same observation order and scales as `PolicyCfg`. Turn its
+7 arm outputs into joint deltas the same way as in training: clip to ±1, multiply by 0.03 rad, then filter with
+`delta = 0.2 · new + 0.8 · previous` (`EMARelativeJointPositionAction`). Add the deltas to the measured joint
+positions and send the result as joint position targets. Map the gripper output to open (`move(0.08)`) or close
+(`grasp(0.056, ~20 N)`). The real container should match the sim cup in size, be half full, and stand at the spot
+given above.
 
 
 ## Installation

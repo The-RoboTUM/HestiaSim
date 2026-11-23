@@ -143,6 +143,14 @@ def to_world(x: float, y: float, yaw_deg: float, px: float, py: float) -> tuple[
 
 
 def quat_wxyz(yaw_deg: float) -> tuple[float, float, float, float]:
-    """Rotation about z as a quaternion (w, x, y, z), the convention of MuJoCo and Isaac Lab."""
+    """Rotation about z as a quaternion (w, x, y, z), the convention of MuJoCo (and of Isaac Lab before 3.0)."""
     h = math.radians(yaw_deg) / 2
     return (math.cos(h), 0.0, 0.0, math.sin(h))
+
+
+def quat_xyzw(yaw_deg: float) -> tuple[float, float, float, float]:
+    """Rotation about z as a quaternion (x, y, z, w), the convention of Isaac Lab 3.x (create_prim, spawners,
+    InitialStateCfg.rot). (Fix 2026-11-23: the Isaac spawn script used quat_wxyz, which Isaac Lab 3 reads as a
+    180 deg roll for yaw 0, i.e. upside-down tables.)"""
+    h = math.radians(yaw_deg) / 2
+    return (0.0, 0.0, math.sin(h), math.cos(h))

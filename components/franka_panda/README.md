@@ -37,4 +37,7 @@ MuJoCo has no copy of Isaac Lab's USD, so the MuJoCo preview applies these setti
 `franka_emika_panda/panda.xml` (built from the same Franka description: same links and joints). Same robot
 and servo values; the physics engines differ, so test trained policies in Isaac Lab.
 
-Mounted on `components/panda_adapter` in `scenes/u_table_layout`.
+Mounted on `components/panda_adapter` in `scenes/u_table_layout`. The kitchen pour training
+(`HestiaBeansPour-Franka-Kitchen-Pour`) uses the pour task's robot config directly (`pour_env_cfg._robot_cfg()`).
+That config has the same v1 values plus the training's collision proxies, and the robot is mounted at this scene's
+pose.

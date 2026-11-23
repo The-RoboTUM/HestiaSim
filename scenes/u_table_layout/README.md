@@ -77,5 +77,12 @@ component changes; this scene follows.
   then `git sparse-checkout set franka_emika_panda`.
 
 Mounting pose (both): on the adapter, `robot_pose()` in `u_layout.py`: x +1.181, y +0.244, z 0.69, facing +135°.
-The training itself places the robot at the origin with its own table and cups; running a trained policy in
-this scene needs those relative positions to match as well.
+The pour training (`HestiaBeansPour-Franka-Pour`) places the robot at the origin with its own table and cups; running
+one of its policies in this scene needs those relative positions to match as well. The **kitchen pour training**
+(`HestiaBeansPour-Franka-Kitchen-Pour`, `training/hestia_beans_pour/.../tasks/kitchen_pour`) reads its poses from
+`u_layout.py`: the robot on the adapter in the home pose, the mixer, and the bean container on the bottom table,
+15 cm from its end at the left table and 20 cm from its front edge.
+
+Isaac Lab 3.x quaternions are (x, y, z, w). `spawn_U_table_layout.py` therefore uses `u_layout.quat_xyzw()`
+(fixed 2026-11-23: it used `quat_wxyz()` before, which Isaac Lab read as a 180° roll). The MuJoCo preview keeps
+(w, x, y, z).
