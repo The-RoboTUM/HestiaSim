@@ -36,8 +36,10 @@ Every component and scene folder has its own README with the details.
 3. **Units:** STL/IGES in **mm** (hand-off files for CAD and hardware); USD, MuJoCo, Isaac in **m**, Z-up.
 4. **File names:** `<part>_v<N>.<ext>`, e.g. `container01_v2.stl`. The version counts up per object,
    whoever made it. Keep older versions; the README says which one is current.
-5. **Don't commit generated files** (`meshes/`, `usd/`, `exports/`, gitignored). Keep files under 50 MB
-   (GitHub warns above 50, blocks above 100); simplify large meshes.
+5. **Files over 100 MB can't be pushed** (GitHub's limit; it warns from 50 MB). Make a simplified copy with
+   `components/container/scripts/simplify_mesh.py` and check that it keeps the physics: same size, volume
+   (= mass), centre of mass and inertia, so object handling in Isaac Lab stays realistic. If the full original
+   is needed, keep it outside git (e.g. a shared Google Drive, not set up yet) and link it in the README.
 
 ## Component README
 

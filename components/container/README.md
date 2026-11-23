@@ -25,9 +25,13 @@ uv run --no-project --with trimesh --with numpy --with scipy --with rtree --with
 
 1. **Simplify:** quadric edge collapse (`trimesh` + `fast-simplification`) merges triangles where the surface
    is flat, so flat walls lose almost all triangles and edges and the handle keep their shape.
-2. **Check accuracy** (printed by the script): for v3 the size is unchanged (190 x 120 x 69.95 mm), the volume
-   is 99.998 % of v2, and the vertices lie at most 0.024 mm from v2's surface (exact distance, 20k vertices).
-   No holes; 4 edges shared by more than two triangles (fine for simulation).
+2. **Check accuracy and physics** (printed by the script). For v3:
+   - size unchanged (190 x 120 x 69.95 mm); vertices at most 0.024 mm from v2's surface (exact, 20k vertices)
+   - volume 99.998 % of v2, so the **same mass** for the same material
+   - **centre of mass** shifted by 0.0004 mm (at x -7.6, y 0, z 26.6 mm); **inertia** within 0.004 %
+   - no holes; 4 edges shared by more than two triangles (fine for simulation)
+
+   Same size, mass, centre of mass and inertia means the object moves the same when the robot lifts or tips it.
 3. **Choose the triangle count:** 50k, 100k and 150k were all equally accurate (this shape is mostly flat),
    so the smallest, 50k (2.5 MB), was taken. For another object, try a few counts and take the smallest one
    whose check still looks like this.
@@ -84,3 +88,7 @@ The outer-bar box goes down to z = 10 everywhere, so at its inner bottom corner 
 7.5 mm lower than the real rounded bar; the gap above z = 17.5 is exact. Grasp options for the Panda
 (max. 80 mm opening): pinch the handle across its 20 mm width (y), or put a finger into the 15 mm gap
 from below (whether a Panda finger fits there is not checked).
+
+Mass in Isaac: set the mass and centre of mass explicitly (mass = 292 cm³ x density; centre of mass
+(-7.6, 0, 26.6) mm from v3) instead of letting Isaac compute them from the boxes, whose volume is 0.6 %
+larger (293.8 cm³, square handle corners).

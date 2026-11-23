@@ -20,7 +20,7 @@ $B --with mujoco --with scipy --with networkx python preview_mujoco.py
 
 **Table types** (`--type`, every script): `standard` = the measured lab table with the two diagonal braces;
 `no_brace` = the same table without the braces (and without their plank notches). Output files carry the
-type in their name, e.g. `alu_table_no_brace_v2.stl`, `meshes/alu_table_no_brace.obj`.
+type in their name, e.g. `alu_table_no_brace_v1.stl`, `meshes/alu_table_no_brace.obj`.
 
 Every script takes the same table options as `make_table.py` (see `python make_table.py --help`),
 e.g. `--leg 0.60 --back-leg 1.42` for a top 100 mm higher. Defaults = the real lab table, measured
