@@ -162,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--thickness", type=float, default=0.010, help="Plate thickness (measured 10 mm).")
     p.add_argument("--row160-offset", type=float, default=0.020,
                    help="y of the robot's 160 mm bolt row from the plate centre [m] (measured 20 mm).")
-    p.add_argument("--suffix", type=str, default="", help="Appended to drawing/STL names, e.g. _jeffrey_v1_nov22.")
+    p.add_argument("--suffix", type=str, default="", help="Appended to drawing/STL names, e.g. _v2.")
     p.add_argument("--stl", action="store_true", help="Also write the plate as STL in mm (hand-off file).")
     p.add_argument("--output", type=str, default=os.path.join(MESHES, "panda_adapter.obj"))
     return p

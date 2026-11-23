@@ -82,7 +82,7 @@ def main():
     parser = build_parser()
     parser.description = "Dimensioned drawing of the aluminium-profile table."
     parser.set_defaults(output=None)
-    parser.add_argument("--suffix", type=str, default="", help="Appended to the file name, e.g. _jeffrey_v2_dec01.")
+    parser.add_argument("--suffix", type=str, default="", help="Appended to the file name, e.g. _v2.")
     args = parser.parse_args()
     parts = build_from_args(args)
 

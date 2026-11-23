@@ -5,7 +5,7 @@ The mixer is shown for placement only (visual, no collision). --drop-test adds 3
 .. code-block:: bash
 
     cd <HestiaSimulation>/scenes/u_table_layout
-    UV="uv run --no-project --with mujoco --with trimesh --with shapely --with mapbox-earcut --with scipy --with networkx"
+    UV="uv run --no-project --with mujoco --with trimesh --with shapely --with mapbox-earcut --with scipy --with networkx --with fast-simplification"
     $UV python preview_U_table_layout.py                           # viewer
     $UV python preview_U_table_layout.py --drop-test --steps 300   # check: test cubes rest at top + 0.04 m
     $UV python preview_U_table_layout.py --no-mixer                # tables only
@@ -32,6 +32,19 @@ def mixer_extra(places, top: float):
     x, y, yaw = u_layout.mixer_pose(places)
     print(f"[INFO] Mixer        x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, on {u_layout.MIXER_ON[0]} at z={top:.3f}")
     return ("Mixer", mesh, (x, y, top), yaw, (0.85, 0.85, 0.88, 1.0))
+
+
+def container_extra(places, top: float):
+    mesh = trimesh.load(u_layout.CONTAINER_STL, force="mesh")
+    mesh.apply_scale(0.001)  # STL in mm -> m (origin already at its bottom centre)
+    try:  # 1.6M triangles: simplify for the viewer (needs fast-simplification; looks the same)
+        mesh = mesh.simplify_quadric_decimation(face_count=150_000)
+    except Exception:  # noqa: BLE001  (package missing: show the full mesh, slower to load)
+        pass
+    x, y, yaw = u_layout.container_pose(places)
+    print(f"[INFO] Container    x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg (handle west), "
+          f"on {u_layout.CONTAINER_TABLE} at z={top:.3f}")
+    return ("Container", mesh, (x, y, top), yaw, (0.30, 0.55, 0.85, 1.0))
 
 
 def adapter_extra(places, top: float):
@@ -74,6 +87,7 @@ def main():
     parser.add_argument("--no-mixer", action="store_true", help="Leave the mixer out.")
     parser.add_argument("--no-adapter", action="store_true", help="Leave the Panda adapter plate out.")
     parser.add_argument("--no-robot", action="store_true", help="Leave the Franka Panda out.")
+    parser.add_argument("--no-container", action="store_true", help="Leave the container out.")
     parser.add_argument("--panda-xml", type=str, default=u_layout.PANDA_MJCF, help="MuJoCo Menagerie panda.xml.")
     parser.add_argument("--steps", type=int, default=0, help="Headless: simulate this many 10 ms steps, print, exit.")
     parser.add_argument("--drop-test", action="store_true", help="Drop 3 test cubes on each table top (check only).")
@@ -86,6 +100,7 @@ def main():
     for name, x, y, yaw in places:
         print(f"[INFO] {name:12s} x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg")
     extras = ([] if args.no_mixer else [mixer_extra(places, top)]) + ([] if args.no_adapter else [adapter_extra(places, top)])
+    extras += [] if args.no_container else [container_extra(places, top)]
     # start view: standing in the opening of the U, looking at the bottom table (left table on the left)
     robot = [] if (args.no_robot or args.no_adapter) else robot_attachment(places, top, args.panda_xml)
     preview_mujoco.run(parts, top, places, args.steps, args.drop_test, extras, camera=(-90.0, -30.0, 6.5),

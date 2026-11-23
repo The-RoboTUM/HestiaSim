@@ -11,15 +11,18 @@ position of that table's origin in meters and its rotation about the vertical ax
 LEFT / RIGHT are as seen standing in the opening of the U, looking at the bottom table.
 Seen from above (bottom table at the back, its front = +y; the left table is at +x):
 
+                  north (-y)
            ┌──────────────────┐
-     ┌────┐│   TableBottom    │┌────┐      back walls on the outside, fronts facing the inside;
-     │    │└──────────────────┘│    │      side tables OUTSIDE the ends of the bottom table;
-     │ R  │      inside    ◄─M │ L  │      their back ends start halfway along the bottom
+     ┌────┐│ C   TableBottom  │┌────┐      back walls on the outside, fronts facing the inside;
+     │ A  │└──────────────────┘│    │      side tables OUTSIDE the ends of the bottom table;
+     │ L  │ M─►    inside      │ R  │      their back ends start halfway along the bottom
      │    │                    │    │      table's depth (side_offset = 0.5)
      └────┘                    └────┘      M = mixer in the middle of the left table, perpendicular
-                 ▲ you stand here          to it, its front (bowl side) facing the inside of the U
+     west (+x)  ▲ you stand here  east (-x)    to it, its front (bowl side) facing the inside of the U
+     (Correction 2026-11-23: this sketch used to show L and R mirrored; the numbers were always right.)
      A = Panda adapter plate on the left table at its end next to the bottom table, robot facing
          45 deg "south-east": towards the inside and the opening of the U (see ADAPTER_* below)
+     C = container on the bottom table at its end next to the robot, handle pointing west (CONTAINER_* below)
 
 gap         = space between the bottom table's ends and the side tables (default 0 = touching)
 side_offset = where the side tables' back ends start, as a fraction of the bottom table's depth
@@ -42,11 +45,11 @@ TABLE_LENGTH = 1.80  # m, make_table.py --length
 TABLE_WIDTH = 0.96  # m, make_table.py --width
 TABLE_TOP = 0.68  # m, top surface height of the table (make_table.py defaults)
 
-# Mixer (components/mixer, Mana's v1 = her newest version, confirmed 2026-11-22). Its USD lifts its own root by
+# Mixer (components/mixer, v2 = Mana's model, the current one, confirmed 2026-11-22). Its USD lifts its own root by
 # 0.233 m so the mixer's bottom is at z = 0; footprint x -0.296..+0.161, y -0.147..+0.147 m, height 0.339 m
 # (in its own frame). Its FRONT is +x: the bowl side (the body/column extends to -x, the chute is at +x).
-MIXER_USD = os.path.join(MIXER_DIR, "mum8_chute_mana_v1_nov22.usda")
-MIXER_STL = os.path.join(MIXER_DIR, "mum8_chute_mana_v1_nov22.stl")  # same shape, mm
+MIXER_USD = os.path.join(MIXER_DIR, "mum8_chute_v2.usda")
+MIXER_STL = os.path.join(MIXER_DIR, "mum8_chute_v2.stl")  # same shape, mm
 MIXER_BOTTOM_OFFSET = 0.233  # m, the USD root's own translate (bottom of the mixer -> z = 0)
 # where it stands: (table name, x, y on that table's top in the TABLE frame [m]). It stands perpendicular to
 # the table with its front facing the table's front (= the inside of the U). x = 0: middle of the table's
@@ -72,6 +75,29 @@ ADAPTER_EDGE_TO_END = 0.075  # m, plate edge -> the table's end (earlier tries: 
 ADAPTER_EDGE_TO_FRONT = 0.100  # m, plate edge -> bottom table's front edge
 ROBOT_FACING_DEG = 135.0  # world yaw of the robot's front ("south-east", see the compass above)
 JOINT1_IN_PLATE = (0.0, 0.0085)  # m, robot's vertical axis in plate coordinates (8.5 mm off-centre, measured)
+
+
+# Container (components/container, container01 v2): 190 x 120 x 70 mm, STL in mm, origin = centre of its bottom
+# face. Body x -0.095..+0.065 m, the HANDLE sticks out at +x (+0.065..+0.095 m, 20 mm wide) in its own frame.
+# It stands on the BOTTOM table (the one in front of you in the opening) at its end next to the robot, the
+# handle pointing west (+x world, towards the left table / the robot), square to the table (yaw 0) for now;
+# later the handle should point at the robot itself. Handle tip 150 mm from the bottom table's +x end, body
+# edge 100 mm from its front edge. About 0.53 m from the robot's vertical axis.
+CONTAINER_DIR = os.path.join(REPO, "components", "container")
+CONTAINER_STL = os.path.join(CONTAINER_DIR, "container01_v2.stl")  # mm
+CONTAINER_TABLE = "TableBottom"
+CONTAINER_HALF_DEPTH = 0.060  # m, half its size across the handle direction (120 mm)
+CONTAINER_HANDLE_TIP = 0.095  # m, origin -> handle tip
+CONTAINER_TIP_TO_END = 0.150  # m, handle tip -> the bottom table's +x end
+CONTAINER_EDGE_TO_FRONT = 0.100  # m, body edge -> the bottom table's front edge (+y)
+CONTAINER_YAW = 0.0  # deg relative to the table: 0 = handle along the table's +x = west
+
+
+def container_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDTH):
+    """World (x, y, yaw) of the container (origin = bottom centre) on CONTAINER_TABLE's top."""
+    px = length / 2 - CONTAINER_TIP_TO_END - CONTAINER_HANDLE_TIP
+    py = width / 2 - CONTAINER_EDGE_TO_FRONT - CONTAINER_HALF_DEPTH
+    return on_table(places, CONTAINER_TABLE, px, py, CONTAINER_YAW)
 
 
 def adapter_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDTH):

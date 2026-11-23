@@ -44,7 +44,7 @@ def arrow_h(ax, x0, x1, z, txt, color, fs=9, bold=False, dz=18):
 def main():
     parser = build_parser()
     parser.add_argument("--detailed", action="store_true", help="Also show calculated values, fixed parts and checks.")
-    parser.add_argument("--suffix", type=str, default="", help="Appended to the file name, e.g. _jeffrey_v2_dec01.")
+    parser.add_argument("--suffix", type=str, default="", help="Appended to the file name, e.g. _v2.")
     args = parser.parse_args()
     parts = build_from_args(args)
     B = {k: m.bounds * 1000 for k, m in parts.items()}

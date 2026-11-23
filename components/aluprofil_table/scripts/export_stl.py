@@ -6,8 +6,8 @@ Outputs (exports/ in the dev folder, the component folder when run from <compone
     panda_adapter<suffix>.stl      adapter plate (from make_adapter.py defaults, if that script is present)
     parts/<part>.stl               every table part separately (only with --parts)
 
-The HestiaSimulation repo names files <model>_<author>_v<N>_<date>, e.g.
-    python export_stl.py --suffix _jeffrey_v2_dec01
+The HestiaSim repo names files <part>_v<N> (see the repo README), e.g.
+    python export_stl.py --suffix _v2
 
 .. code-block:: bash
 

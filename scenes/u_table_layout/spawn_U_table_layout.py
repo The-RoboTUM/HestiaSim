@@ -1,6 +1,6 @@
 """Isaac Lab: the U table layout (u_layout.py) - three tables, the mixer, the Panda adapter and a Franka Panda.
 
-The table USD is referenced three times and the mixer USD once (components/mixer, Mana's v1); nothing
+The table USD is referenced three times and the mixer USD once (components/mixer, v2 by Mana); nothing
 is copied. --drop-test adds 3 test cubes per table (check only).
 
 The tables are of type no_brace (u_layout.TABLE_TYPE). Their USD is generated once per table design with
