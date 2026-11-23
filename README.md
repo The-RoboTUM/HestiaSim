@@ -9,7 +9,7 @@ More about the project: https://www.robotum.info/projects/hestia
 HestiaSim/
 ├── components/        one real object per folder (geometry, drawings, generator scripts, README)
 │   ├── aluprofil_table/   lab table from 80x80 aluminium profiles (generator + previews)
-│   ├── container/         container01 with handle (STL)
+│   ├── container/         container01 with handle (STL; script to simplify heavy meshes)
 │   ├── franka_panda/      Panda settings used by the pouring training (no robot files)
 │   ├── mixer/             mum8 kitchen mixer with chute (STL, IGES, USDA)
 │   └── panda_adapter/     round plate between table top and Panda (generator)
