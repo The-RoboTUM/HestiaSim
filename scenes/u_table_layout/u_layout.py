@@ -1,8 +1,7 @@
-"""U table layout: three aluprofil tables (type no_brace) in a U, with the mixer on the left table.
+"""U table layout: three aluprofil tables (type no_brace) in a U, with the mixer and wooden board on the left table.
 
 Pure Python (no trimesh / Isaac imports), shared by the MuJoCo preview and the Isaac Lab spawn script.
-This scene only REFERENCES components (components/aluprofil_table, components/mixer); it never copies
-their geometry.
+This scene only REFERENCES components; it never copies their geometry.
 
 Table frame (as built by make_table.py): x = along the length, y = depth with the FRONT at +y and
 the back wall at -y, origin on the floor at the table centre. A placement is (name, x, y, yaw):
@@ -13,7 +12,7 @@ Seen from above (bottom table at the back, its front = +y; the left table is at 
 
                   north (-y)
            ┌──────────────────┐
-     ┌────┐│ C   TableBottom  │┌────┐      back walls on the outside, fronts facing the inside;
+     ┌────┐│     TableBottom  │┌────┐      back walls on the outside, fronts facing the inside;
      │ A  │└──────────────────┘│    │      side tables OUTSIDE the ends of the bottom table;
      │ L  │ M─►    inside      │ R  │      their back ends start halfway along the bottom
      │    │                    │    │      table's depth (side_offset = 0.5)
@@ -22,7 +21,8 @@ Seen from above (bottom table at the back, its front = +y; the left table is at 
      (Correction 2026-11-23: this sketch used to show L and R mirrored; the numbers were always right.)
      A = Panda adapter plate on the left table at its end next to the bottom table, robot facing
          45 deg "south-east": towards the inside and the opening of the U (see ADAPTER_* below)
-     C = container on the bottom table at its end next to the robot, handle pointing west (CONTAINER_* below)
+     Container: on the wooden board on the left table, between the robot and the mixer, handle
+         pointing at the robot (CONTAINER_* below)
 
 gap         = space between the bottom table's ends and the side tables (default 0 = touching)
 side_offset = where the side tables' back ends start, as a fraction of the bottom table's depth
@@ -37,6 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 TABLE_SCRIPTS = os.path.join(REPO, "components", "aluprofil_table", "scripts")
 MIXER_DIR = os.path.join(REPO, "components", "mixer")
+BOARD_DIR = os.path.join(REPO, "components", "wooden_board")
 ADAPTER_DIR = os.path.join(REPO, "components", "panda_adapter")
 ADAPTER_SCRIPTS = os.path.join(ADAPTER_DIR, "scripts")
 
@@ -56,6 +57,12 @@ MIXER_BOTTOM_OFFSET = 0.233  # m, the USD root's own translate (bottom of the mi
 # length; y = 0.1275: its footprint (-0.296..+0.161 along its front direction) centred on the top's depth.
 MIXER_ON = ("TableLeft", 0.0, 0.1275)
 MIXER_FOOTPRINT_RADIUS = 0.33  # m, covers the footprint from its origin (0.296 back, 0.147 sideways)
+
+# Wooden board (components/wooden_board, nominal size 575 x 763 x 19 mm, origin at bottom centre).
+BOARD_STL = os.path.join(BOARD_DIR, "wooden_board_v1_nov26.stl")  # mm
+BOARD_THICKNESS = 0.019  # m
+# Local table coordinates; world yaw 0 makes the board's long side parallel to world Y.
+BOARD_ON = ("TableLeft", 0.0, 0.06)
 
 
 # Panda adapter plate (components/panda_adapter): Ø350 x 10 mm, origin = plate centre on its bottom face,
@@ -79,25 +86,23 @@ JOINT1_IN_PLATE = (0.0, 0.0085)  # m, robot's vertical axis in plate coordinates
 
 # Container (components/container, container01 v3 = simplified copy of v2, 50k triangles): 190 x 120 x 70 mm, STL in mm, origin = centre of its bottom
 # face. Body x -0.095..+0.065 m, the HANDLE sticks out at +x (+0.065..+0.095 m, 20 mm wide) in its own frame.
-# It stands on the BOTTOM table (the one in front of you in the opening) at its end next to the robot, the
-# handle pointing west (+x world, towards the left table / the robot), square to the table (yaw 0) for now;
-# later the handle should point at the robot itself. Centre 15 cm from the bottom table's +x end and 20 cm from
-# its front edge = the same spot as the kitchen pour training (training/.../kitchen_pour/layout.py,
-# CUP_CENTRE_FROM_END / CUP_CENTRE_FROM_FRONT); keep the two equal. Fixed spot for now: the container will be
-# spawned at random positions later. (2026-11-23: moved from handle tip 150 mm / body 100 mm from the edges.)
+# It stands on the WOODEN BOARD (left table), in the free strip between the board's edge on the robot side
+# and the mixer (board y -0.382 .. mixer footprint at about -0.147 in the board frame), with the handle
+# pointing at the robot's vertical axis. (2026-11-26: moved from the bottom table, where it stood at the
+# kitchen pour training's spot, 15 cm from that table's +x end / 20 cm from its front edge; the training
+# (training/.../kitchen_pour/layout.py) still uses that spot, so the two now differ.) Fixed spot for now: the
+# container will be spawned at random positions later.
 CONTAINER_DIR = os.path.join(REPO, "components", "container")
 CONTAINER_STL = os.path.join(CONTAINER_DIR, "container01_v3.stl")  # mm, 2.5 MB (v2 = 79 MB full detail)
-CONTAINER_TABLE = "TableBottom"
-CONTAINER_CENTRE_FROM_END = 0.15  # m, container origin -> the bottom table's +x end (= kitchen pour)
-CONTAINER_CENTRE_FROM_FRONT = 0.20  # m, container origin -> the bottom table's front edge, +y (= kitchen pour)
-CONTAINER_YAW = 0.0  # deg relative to the table: 0 = handle along the table's +x = west
+CONTAINER_ON_BOARD = (0.0, -0.265)  # m, container origin in the board frame (centre of the free strip)
 
 
-def container_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDTH):
-    """World (x, y, yaw) of the container (origin = bottom centre) on CONTAINER_TABLE's top."""
-    px = length / 2 - CONTAINER_CENTRE_FROM_END
-    py = width / 2 - CONTAINER_CENTRE_FROM_FRONT
-    return on_table(places, CONTAINER_TABLE, px, py, CONTAINER_YAW)
+def container_pose(places):
+    """World (x, y, yaw) of the container (origin = bottom centre) on the board; handle (+x) at the robot axis."""
+    bx, by, byaw = board_pose(places)
+    x, y = to_world(bx, by, byaw, *CONTAINER_ON_BOARD)
+    jx, jy = joint1_world(places)
+    return x, y, math.degrees(math.atan2(jy - y, jx - x))
 
 
 def adapter_pose(places, length: float = TABLE_LENGTH, width: float = TABLE_WIDTH):
@@ -153,6 +158,11 @@ def mixer_pose(places):
     """World (x, y, yaw) of the mixer: on MIXER_ON, perpendicular to the table, its front (+x) turned to the
     table's front (+y of the table frame = the inside of the U), i.e. yaw = table yaw + 90 deg."""
     return on_table(places, *MIXER_ON, 90.0)
+
+
+def board_pose(places):
+    """World (x, y, yaw) of the wooden board, long side along world Y."""
+    return on_table(places, *BOARD_ON, -90.0)
 
 
 def on_table(places, table: str, px: float, py: float, yaw_rel: float):

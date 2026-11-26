@@ -1,7 +1,7 @@
 # U table layout
 
-Three aluprofil tables (type `no_brace`, no diagonal braces) in a U, with the mixer, the Panda adapter
-plate and a Franka Panda on the left table and the container on the bottom table. This scene only
+Three aluprofil tables (type `no_brace`, no diagonal braces) in a U, with a wooden board, mixer, Panda
+adapter plate, Franka Panda and the container on the left table (container on the board). This scene only
 references the components; it never copies their geometry.
 
 ## Layout
@@ -11,16 +11,16 @@ Left / right = as seen standing in the opening of the U, looking at the bottom t
 
               north (-y)
        ┌──────────────────┐
- ┌────┐│ C   TableBottom  │┌────┐   back walls outside, fronts facing the inside;
+ ┌────┐│     TableBottom  │┌────┐   back walls outside, fronts facing the inside;
  │ A  │└──────────────────┘│    │   side tables outside the ends of the bottom table,
- │ L  │ M─►    inside      │ R  │   their back ends halfway along the bottom table's depth
+ │ L C│ M─►    inside      │ R  │   their back ends halfway along the bottom table's depth
  │    │                    │    │
  └────┘                    └────┘   M = mixer, middle of the left table, front (bowl) to the inside
  west (+x)  ▲ you stand here  east (-x)
                                     A = Panda adapter + Panda, left table at its end next to the
                                         bottom table, robot facing 45° "south-east"
-                                    C = container, bottom table at its end next to the robot,
-                                        handle pointing west (towards the robot side)
+                                    C = container, on the wooden board between the robot and
+                                        the mixer, handle pointing at the robot
 ```
 
 Origin = centre of the bottom table on the floor, metres, Z-up. Compass as in the viewer's start view:
@@ -36,20 +36,21 @@ Overall 3720 x 2280 mm, inside opening 1800 mm.
 | TableBottom (`aluprofil_table` v1, no_brace) | 0 | 0 | 0° | floor |
 | TableLeft (same) | +1.38 | +0.90 | +90° | floor |
 | TableRight (same) | -1.38 | +0.90 | -90° | floor |
-| Mixer (`mixer` v2, Mana) | +1.25 | +0.90 | 180° (front to the inside of the U) | left table top (z 0.68) |
+| Wooden board (`wooden_board` v1) | +1.32 | +0.90 | 0° (long side along world Y) | left table top (z 0.68) |
+| Mixer (`mixer` v2, Mana) | +1.25 | +0.90 | 180° (front to the inside of the U) | wooden board (z 0.699) |
 | Panda adapter (`panda_adapter` v1) | +1.175 | +0.250 | -135° (robot faces +135°, "south-east") | left table top; edge 75 mm from its end next to the bottom table, 100 mm from its front edge |
 | Franka Panda (`franka_panda` v1) | +1.181 | +0.244 | +135° ("south-east") | adapter (z 0.69), upright home pose |
-| Container (`container` v3, simplified) | +0.750 | +0.280 | 0° (handle west) | bottom table top (z 0.68); centre 15 cm from its end next to the robot, 20 cm from its front edge (same as the kitchen pour training), 0.43 m from the robot axis |
+| Container (`container` v3, simplified) | +1.320 | +0.635 | -110° (handle points at the robot axis) | wooden board (z 0.699), between the board's robot-side edge and the mixer, 0.415 m from the robot axis; differs from the kitchen pour training's spot on the bottom table |
 
-All positions live in `u_layout.py` (`placements()`, `MIXER_ON`, `ADAPTER_*`, `ROBOT_FACING_DEG`,
-`CONTAINER_*`); the preview and the spawn script both read it.
+Positions live in `u_layout.py`; the MuJoCo preview reads `BOARD_ON` and `MIXER_ON`. The Isaac Lab spawn
+script still uses the mixer position but does not yet spawn the board.
 
 ## Run
 
 | File | Does |
 |---|---|
 | `u_layout.py` | all positions (pure Python, used by both scripts) |
-| `preview_U_table_layout.py` | MuJoCo preview on a laptop (mixer and container visual only, no collision) |
+| `preview_U_table_layout.py` | MuJoCo preview on a laptop (board, mixer and container visual only, no collision) |
 | `spawn_U_table_layout.py` | Isaac Lab: table USD x3 + mixer USD + adapter USD + Panda |
 
 ```bash
@@ -57,12 +58,15 @@ All positions live in `u_layout.py` (`placements()`, `MIXER_ON`, `ADAPTER_*`, `R
 UV="uv run --no-project --with mujoco --with trimesh --with shapely --with mapbox-earcut --with scipy --with networkx --with fast-simplification"
 $UV python preview_U_table_layout.py                          # viewer
 $UV python preview_U_table_layout.py --drop-test --steps 300  # check: 9 test cubes rest at 0.72 m
-# options: --gap, --side-offset, --no-mixer, --no-adapter, --no-robot, --no-container
+# options: --gap, --side-offset, --no-board, --no-mixer, --no-adapter, --no-robot, --no-container
 
 # Isaac Lab workstation (from your IsaacLab folder). Needs the no_brace table USD and the adapter USD once:
 # see components/aluprofil_table/scripts/README.md
 uv run python <HestiaSim>/scenes/u_table_layout/spawn_U_table_layout.py --visualizer kit
 ```
+
+The wooden board and the corrected mixer height are currently implemented in the MuJoCo preview only;
+the Isaac Lab spawn script still places the mixer directly on the table.
 
 ## Robot
 
@@ -93,7 +97,7 @@ tables). The MuJoCo preview keeps (w, x, y, z).
 
 ## Not done yet
 
-- Container position is fixed for now; it will be spawned at random positions later. Until then the same
-  numbers live in two places (`CONTAINER_*` here, `CUP_CENTRE_*` in the kitchen pour training).
+- Container position is fixed for now; it will be spawned at random positions later. Since 2026-11-26 it
+  stands on the board here, while the kitchen pour training (`CUP_CENTRE_*`) still uses the bottom table spot.
 - Container is in the MuJoCo preview only; Isaac needs a container USD first.
-- Container handle points west (square to the table); later it should point at the robot (`CONTAINER_YAW`).
+- Container handle points at the robot axis (yaw computed in `container_pose()`).

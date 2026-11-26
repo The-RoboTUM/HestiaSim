@@ -1,6 +1,6 @@
-"""Laptop preview of the U table layout in MuJoCo: three tables + the mixer on the left table.
+"""Laptop preview of the U table layout in MuJoCo: three tables + the board and mixer on the left table.
 
-The mixer is shown for placement only (visual, no collision). --drop-test adds 3 test cubes per table.
+The board and mixer are shown for placement only (visual, no collision). --drop-test adds 3 test cubes per table.
 
 .. code-block:: bash
 
@@ -8,7 +8,8 @@ The mixer is shown for placement only (visual, no collision). --drop-test adds 3
     UV="uv run --no-project --with mujoco --with trimesh --with shapely --with mapbox-earcut --with scipy --with networkx --with fast-simplification"
     $UV python preview_U_table_layout.py                           # viewer
     $UV python preview_U_table_layout.py --drop-test --steps 300   # check: test cubes rest at top + 0.04 m
-    $UV python preview_U_table_layout.py --no-mixer                # tables only
+    $UV python preview_U_table_layout.py --no-mixer                # tables + board
+    $UV python preview_U_table_layout.py --no-board                # omit the board
 """
 
 import argparse
@@ -25,16 +26,28 @@ import trimesh  # noqa: E402
 from make_table import build_parser  # noqa: E402
 
 
-def mixer_extra(places, top: float):
+def board_extra(places, top: float):
+    mesh = trimesh.load(u_layout.BOARD_STL, force="mesh")
+    mesh.apply_scale(0.001)  # STL in mm -> m
+    x, y, yaw = u_layout.board_pose(places)
+    print(f"[INFO] Wooden board x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, "
+          f"on {u_layout.BOARD_ON[0]} at z={top:.3f}")
+    return ("WoodenBoard", mesh, (x, y, top), yaw, (0.92, 0.92, 0.88, 1.0))
+
+
+def mixer_extra(places, top: float, board_present: bool):
     mesh = trimesh.load(u_layout.MIXER_STL, force="mesh")
     mesh.apply_scale(0.001)  # STL in mm -> m
     mesh.apply_translation((0, 0, u_layout.MIXER_BOTTOM_OFFSET))  # bottom of the mixer -> z = 0 (as its USD)
     x, y, yaw = u_layout.mixer_pose(places)
-    print(f"[INFO] Mixer        x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, on {u_layout.MIXER_ON[0]} at z={top:.3f}")
-    return ("Mixer", mesh, (x, y, top), yaw, (0.85, 0.85, 0.88, 1.0))
+    mixer_z = top + (u_layout.BOARD_THICKNESS if board_present else 0.0)
+    support = "board" if board_present else u_layout.MIXER_ON[0]
+    print(f"[INFO] Mixer        x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg, "
+          f"on {support} at z={mixer_z:.3f}")
+    return ("Mixer", mesh, (x, y, mixer_z), yaw, (0.85, 0.85, 0.88, 1.0))
 
 
-def container_extra(places, top: float):
+def container_extra(places, top: float, board_present: bool):
     mesh = trimesh.load(u_layout.CONTAINER_STL, force="mesh")
     mesh.apply_scale(0.001)  # STL in mm -> m (origin already at its bottom centre)
     if len(mesh.faces) > 150_000:  # only for a heavy mesh (e.g. v2, 1.6M triangles); v3 has 50k
@@ -43,9 +56,11 @@ def container_extra(places, top: float):
         except Exception:  # noqa: BLE001  (package missing: show the full mesh, slower to load)
             pass
     x, y, yaw = u_layout.container_pose(places)
-    print(f"[INFO] Container    x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg (handle west), "
-          f"on {u_layout.CONTAINER_TABLE} at z={top:.3f}")
-    return ("Container", mesh, (x, y, top), yaw, (0.30, 0.55, 0.85, 1.0))
+    z = top + (u_layout.BOARD_THICKNESS if board_present else 0.0)
+    support = "board" if board_present else u_layout.BOARD_ON[0]
+    print(f"[INFO] Container    x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg (handle at the robot), "
+          f"on {support} at z={z:.3f}")
+    return ("Container", mesh, (x, y, z), yaw, (0.30, 0.55, 0.85, 1.0))
 
 
 def adapter_extra(places, top: float):
@@ -80,11 +95,12 @@ def robot_attachment(places, top: float, panda_xml: str):
 
 def main():
     parser = build_parser()
-    parser.description = "Preview the U table layout (three tables + mixer) in MuJoCo."
+    parser.description = "Preview the U table layout (three tables + board and mixer) in MuJoCo."
     parser.set_defaults(type=u_layout.TABLE_TYPE)  # the scene's table type (override with --type)
     parser.add_argument("--gap", type=float, default=0.0, help="Gap between the bottom table and the side tables [m].")
     parser.add_argument("--side-offset", type=float, default=0.5,
                         help="Side tables' back ends: 0 = in line with the bottom table's back edge, 0.5 = halfway.")
+    parser.add_argument("--no-board", action="store_true", help="Leave the wooden board out.")
     parser.add_argument("--no-mixer", action="store_true", help="Leave the mixer out.")
     parser.add_argument("--no-adapter", action="store_true", help="Leave the Panda adapter plate out.")
     parser.add_argument("--no-robot", action="store_true", help="Leave the Franka Panda out.")
@@ -100,8 +116,10 @@ def main():
     places = u_layout.placements(args.length, args.width, args.gap, args.side_offset)
     for name, x, y, yaw in places:
         print(f"[INFO] {name:12s} x={x:+.3f} y={y:+.3f} m, yaw={yaw:+.0f} deg")
-    extras = ([] if args.no_mixer else [mixer_extra(places, top)]) + ([] if args.no_adapter else [adapter_extra(places, top)])
-    extras += [] if args.no_container else [container_extra(places, top)]
+    extras = ([] if args.no_board else [board_extra(places, top)])
+    extras += [] if args.no_mixer else [mixer_extra(places, top, board_present=not args.no_board)]
+    extras += [] if args.no_adapter else [adapter_extra(places, top)]
+    extras += [] if args.no_container else [container_extra(places, top, board_present=not args.no_board)]
     # start view: standing in the opening of the U, looking at the bottom table (left table on the left)
     robot = [] if (args.no_robot or args.no_adapter) else robot_attachment(places, top, args.panda_xml)
     preview_mujoco.run(parts, top, places, args.steps, args.drop_test, extras, camera=(-90.0, -30.0, 6.5),
